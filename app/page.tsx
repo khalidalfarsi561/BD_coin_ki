@@ -33,12 +33,9 @@ type CardRarity = "common" | "rare" | "epic" | "legendary";
 
 type DemoCard = GameCard & {
   rarity: CardRarity;
-  image?: string;
 };
 
-type DemoBoost = GameBoost & {
-  image?: string;
-};
+type DemoBoost = GameBoost;
 
 const demoCards: DemoCard[] = [
   {
@@ -49,7 +46,6 @@ const demoCards: DemoCard[] = [
     base_income_per_hour: 12,
     category: COLLECTIONS.CARDS,
     rarity: "common",
-    image: "https://picsum.photos/seed/dbz_kingkai/100/100",
   },
   {
     id: "card-2",
@@ -59,7 +55,6 @@ const demoCards: DemoCard[] = [
     base_income_per_hour: 75,
     category: COLLECTIONS.CARDS,
     rarity: "rare",
-    image: "https://picsum.photos/seed/dbz_timechamber/100/100",
   },
   {
     id: "card-3",
@@ -69,7 +64,6 @@ const demoCards: DemoCard[] = [
     base_income_per_hour: 450,
     category: COLLECTIONS.CARDS,
     rarity: "epic",
-    image: "https://picsum.photos/seed/dbz_gravityroom/100/100",
   },
   {
     id: "card-4",
@@ -80,7 +74,6 @@ const demoCards: DemoCard[] = [
     base_income_per_hour: 2500,
     category: COLLECTIONS.CARDS,
     rarity: "legendary",
-    image: "https://picsum.photos/seed/dbz_godritual/100/100",
   },
 ];
 
@@ -92,7 +85,6 @@ const demoBoosts: DemoBoost[] = [
     cost: 1000,
     multiplier: 2,
     durationMs: 60000,
-    image: "https://picsum.photos/seed/dbz_senzu/100/100",
   },
   {
     id: "boost-2",
@@ -101,7 +93,6 @@ const demoBoosts: DemoBoost[] = [
     cost: 5000,
     multiplier: 10,
     durationMs: 15000,
-    image: "https://picsum.photos/seed/dbz_kaioken/100/100",
   },
   {
     id: "boost-energy",
@@ -111,7 +102,6 @@ const demoBoosts: DemoBoost[] = [
     multiplier: 1,
     durationMs: 0,
     type: "energy_restore",
-    image: "https://picsum.photos/seed/dbz_senzu_energy/100/100",
   },
 ];
 
@@ -151,7 +141,6 @@ type SavedGameState = {
   claimedQuestRewards?: string[];
   questRewardsCache?: Record<string, boolean>;
   questProgress?: Partial<QuestProgressState>;
-  unlockedSecretCards?: string[];
   permanentAchievements?: string[];
   lastActive?: number;
 };
@@ -289,7 +278,6 @@ export default function App() {
   const [questProgress, setQuestProgress] = useState<QuestProgressState>(
     createFreshQuestProgress("", ""),
   );
-  const [unlockedSecretCards, setUnlockedSecretCards] = useState<string[]>([]);
   const [permanentAchievements, setPermanentAchievements] = useState<string[]>(
     [],
   );
@@ -413,7 +401,6 @@ export default function App() {
         setClaimedQuests(resetQuestClaims);
         setClaimedQuestRewards(resetQuestRewards);
         setQuestRewardsCache(resetQuestRewardsCache as Record<string, boolean>);
-        setUnlockedSecretCards(parsed.unlockedSecretCards || []);
         setPermanentAchievements(parsed.permanentAchievements || []);
 
         const now = Date.now();
@@ -515,7 +502,6 @@ export default function App() {
       claimedQuestRewards,
       questRewardsCache,
       questProgress,
-      unlockedSecretCards,
       permanentAchievements,
       lastActive: Date.now(),
     };
@@ -531,7 +517,6 @@ export default function App() {
     claimedQuestRewards,
     questRewardsCache,
     questProgress,
-    unlockedSecretCards,
     permanentAchievements,
     isLoaded,
   ]);
@@ -704,9 +689,6 @@ export default function App() {
       setEnergy((e) => Math.min(energyMax, e + rewardEnergy));
     }
     if (quest.reward.unlock) {
-      setUnlockedSecretCards((current) => [
-        ...new Set([...current, quest.reward.unlock as string]),
-      ]);
       setPermanentAchievements((current) => [
         ...new Set([...current, quest.reward.unlock as string]),
       ]);
@@ -757,7 +739,7 @@ export default function App() {
             levelMultiplier={levelMultiplier}
             levelEmoji={level?.emoji}
             levelAura={level?.aura}
-            levelImage={level?.image}
+            levelImage={undefined}
             dragonBalls={dragonBalls}
             onClickKi={handleClickKi}
             randomDrop={randomDrop}
@@ -810,13 +792,13 @@ export default function App() {
               </div>
 
               <div className="space-y-4">
-                {unlockedSecretCards.length > 0 && (
+                {permanentAchievements.length > 0 && (
                   <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-4 backdrop-blur-md">
                     <h4 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-300 mb-3">
                       Secret Unlocks
                     </h4>
                     <div className="space-y-2">
-                      {unlockedSecretCards.map((item) => (
+                      {permanentAchievements.map((item) => (
                         <div
                           key={item}
                           className="rounded-2xl border border-cyan-400/10 bg-slate-950/40 px-4 py-3 text-sm text-cyan-100"
