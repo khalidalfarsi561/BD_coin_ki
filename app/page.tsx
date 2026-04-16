@@ -13,6 +13,14 @@ import {
   getLevelIndexByKi,
   GAME_CONSTANTS,
 } from "@/lib/gameConstants";
+import type {
+  GameBoost,
+  GameCard,
+  OwnedCard,
+  QuestCounters,
+  QuestProgressState,
+  RandomDrop,
+} from "@/lib/utils";
 
 const formatKi = (value: number) => {
   return new Intl.NumberFormat("en-US", {
@@ -21,7 +29,18 @@ const formatKi = (value: number) => {
   }).format(Math.max(0, Math.floor(Number(value) || 0)));
 };
 
-const demoCards = [
+type CardRarity = "common" | "rare" | "epic" | "legendary";
+
+type DemoCard = GameCard & {
+  rarity: CardRarity;
+  image?: string;
+};
+
+type DemoBoost = GameBoost & {
+  image?: string;
+};
+
+const demoCards: DemoCard[] = [
   {
     id: "card-1",
     name: "King Kai's Training",
@@ -65,7 +84,7 @@ const demoCards = [
   },
 ];
 
-const demoBoosts = [
+const demoBoosts: DemoBoost[] = [
   {
     id: "boost-1",
     name: "Senzu Bean Rush",
@@ -115,6 +134,26 @@ type Quest = {
   icon: typeof Zap;
   badge: string;
   theme: string;
+};
+
+type SavedGameState = {
+  balanceKi?: number;
+  totalKi?: number;
+  energy?: number;
+  userCards?: OwnedCard[];
+  activeBoost?: {
+    id: string;
+    multiplier: number;
+    expiresAt: number;
+  } | null;
+  dragonBalls?: number;
+  claimedQuests?: string[];
+  claimedQuestRewards?: string[];
+  questRewardsCache?: Record<string, boolean>;
+  questProgress?: Partial<QuestProgressState>;
+  unlockedSecretCards?: string[];
+  permanentAchievements?: string[];
+  lastActive?: number;
 };
 
 const QUESTS: Quest[] = [
@@ -192,21 +231,68 @@ const QUESTS: Quest[] = [
   },
 ];
 
+const isQuestForCurrentCycle = (
+  quest: Quest,
+  resetDaily: boolean,
+  resetWeekly: boolean,
+) => {
+  if (quest.tab === "permanent") return true;
+  if (quest.tab === "daily") return !resetDaily;
+  if (quest.tab === "weekly") return !resetWeekly;
+  return true;
+};
+
+const normalizeQuestProgress = (
+  questProgress: Partial<QuestProgressState> | undefined,
+  todayStamp: string,
+  weekStamp: string,
+): QuestProgressState => {
+  const savedDailyCounters: QuestCounters = {
+    clicks: Number(questProgress?.dailyCounters?.clicks) || 0,
+    upgrades: Number(questProgress?.dailyCounters?.upgrades) || 0,
+  };
+  const savedWeeklyCounters: QuestCounters = {
+    clicks: Number(questProgress?.weeklyCounters?.clicks) || 0,
+    upgrades: Number(questProgress?.weeklyCounters?.upgrades) || 0,
+  };
+  return {
+    clicks: Number(questProgress?.clicks) || 0,
+    upgrades: Number(questProgress?.upgrades) || 0,
+    totalKi: Number(questProgress?.totalKi) || 0,
+    level: Number(questProgress?.level) || 0,
+    legendaryPurchase: Number(questProgress?.legendaryPurchase) || 0,
+    dailyResetStamp: questProgress?.dailyResetStamp || todayStamp,
+    weeklyResetStamp: questProgress?.weeklyResetStamp || weekStamp,
+    dailyCounters: savedDailyCounters,
+    weeklyCounters: savedWeeklyCounters,
+  };
+};
+
+const createFreshQuestProgress = (
+  todayStamp: string,
+  weekStamp: string,
+): QuestProgressState => ({
+  clicks: 0,
+  upgrades: 0,
+  totalKi: 0,
+  level: 0,
+  legendaryPurchase: 0,
+  dailyResetStamp: todayStamp,
+  weeklyResetStamp: weekStamp,
+  dailyCounters: { clicks: 0, upgrades: 0 },
+  weeklyCounters: { clicks: 0, upgrades: 0 },
+});
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [questTab, setQuestTab] = useState<QuestTab>("daily");
-  const [questProgress, setQuestProgress] = useState({
-    clicks: 0,
-    upgrades: 0,
-    totalKi: 0,
-    level: 0,
-    legendaryPurchase: 0,
-    dailyResetStamp: "",
-    weeklyResetStamp: "",
-    dailyCounters: { clicks: 0, upgrades: 0 },
-    weeklyCounters: { clicks: 0, upgrades: 0 },
-  });
+  const [questProgress, setQuestProgress] = useState<QuestProgressState>(
+    createFreshQuestProgress("", ""),
+  );
   const [unlockedSecretCards, setUnlockedSecretCards] = useState<string[]>([]);
+  const [permanentAchievements, setPermanentAchievements] = useState<string[]>(
+    [],
+  );
   const [claimedQuestRewards, setClaimedQuestRewards] = useState<string[]>([]);
   const [questRewardsCache, setQuestRewardsCache] = useState<
     Record<string, boolean>
@@ -215,7 +301,7 @@ export default function App() {
   const [balanceKi, setBalanceKi] = useState<number>(0);
   const [totalKi, setTotalKi] = useState<number>(0);
   const [energy, setEnergy] = useState<number>(GAME_CONSTANTS.ENERGY_MAX);
-  const [userCards, setUserCards] = useState<any[]>([]);
+  const [userCards, setUserCards] = useState<OwnedCard[]>([]);
   const [activeBoost, setActiveBoost] = useState<{
     id: string;
     multiplier: number;
@@ -225,15 +311,10 @@ export default function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [dragonBalls, setDragonBalls] = useState(0);
   const [claimedQuests, setClaimedQuests] = useState<string[]>([]);
-  const [randomDrop, setRandomDrop] = useState<{
-    id: string;
-    x: number;
-    y: number;
-    type: "ki" | "energy" | "boost";
-  } | null>(null);
+  const [randomDrop, setRandomDrop] = useState<RandomDrop | null>(null);
 
   const maxEnergyBonus = useMemo(() => {
-    const energyCard = userCards.find((c: any) => c.card_id === "card-3");
+    const energyCard = userCards.find((c) => c.card_id === "card-3");
     return energyCard ? energyCard.current_level * 10 : 0;
   }, [userCards]);
 
@@ -256,20 +337,25 @@ export default function App() {
     return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
   };
   const getQuestProgressValue = (quest: Quest) => {
-    if (quest.type === "clicks") return quest.tab === "daily" ? questProgress.dailyCounters.clicks : questProgress.weeklyCounters.clicks;
-    if (quest.type === "upgrades") return quest.tab === "daily" ? questProgress.dailyCounters.upgrades : questProgress.weeklyCounters.upgrades;
+    if (quest.type === "clicks")
+      return quest.tab === "daily"
+        ? questProgress.dailyCounters.clicks
+        : questProgress.weeklyCounters.clicks;
+    if (quest.type === "upgrades")
+      return quest.tab === "daily"
+        ? questProgress.dailyCounters.upgrades
+        : questProgress.weeklyCounters.upgrades;
     if (quest.type === "totalKi") return totalKi;
     if (quest.type === "level") return getLevelIndexByKi(totalKi);
-    if (quest.type === "legendaryPurchase") return questProgress.legendaryPurchase;
+    if (quest.type === "legendaryPurchase")
+      return questProgress.legendaryPurchase;
     return 0;
   };
 
   const passiveKiPerSecond = useMemo(
     () =>
-      userCards.reduce((total: number, ownedCard: any) => {
-        const card = demoCards.find(
-          (item: any) => item.id === ownedCard.card_id,
-        );
+      userCards.reduce((total: number, ownedCard) => {
+        const card = demoCards.find((item) => item.id === ownedCard.card_id);
         const perSecond = (Number(card?.base_income_per_hour) || 0) / 3600;
         return total + perSecond * ownedCard.current_level;
       }, 0) *
@@ -280,9 +366,12 @@ export default function App() {
 
   useEffect(() => {
     const savedState = localStorage.getItem("dragonBallKiState");
+    const todayStamp = getLocalDayStamp();
+    const weekStamp = getLocalWeekStamp();
+
     if (savedState) {
       try {
-        const parsed = JSON.parse(savedState);
+        const parsed: SavedGameState = JSON.parse(savedState);
         const savedCards = parsed.userCards || [];
         setUserCards(savedCards);
 
@@ -291,42 +380,41 @@ export default function App() {
           setActiveBoost(savedBoost);
         }
 
-        setDragonBalls(parsed.dragonBalls || 0);
-        const savedQuestProgress = parsed.questProgress || {};
-        const savedDailyCounters = savedQuestProgress.dailyCounters || {};
-        const savedWeeklyCounters = savedQuestProgress.weeklyCounters || {};
-        const savedDailyStamp = savedQuestProgress.dailyResetStamp || "";
-        const savedWeeklyStamp = savedQuestProgress.weeklyResetStamp || "";
-        const todayStamp = getLocalDayStamp();
-        const weekStamp = getLocalWeekStamp();
-        const resetDaily = savedDailyStamp !== todayStamp;
-        const resetWeekly = savedWeeklyStamp !== weekStamp;
+        setDragonBalls(Number(parsed.dragonBalls) || 0);
+
+        const resetDaily =
+          (parsed.questProgress?.dailyResetStamp || "") !== todayStamp;
+        const resetWeekly =
+          (parsed.questProgress?.weeklyResetStamp || "") !== weekStamp;
+
         const savedClaimedQuests = parsed.claimedQuests || [];
-        const resetQuestClaims = (savedClaimedQuests as string[]).filter((questId) => {
+        const resetQuestClaims = savedClaimedQuests.filter((questId) => {
           const questDef = QUESTS.find((quest) => quest.id === questId);
-          if (!questDef) return false;
-          if (questDef.tab === "permanent") return true;
-          if (questDef.tab === "daily") return !resetDaily;
-          if (questDef.tab === "weekly") return !resetWeekly;
-          return true;
+          return questDef
+            ? isQuestForCurrentCycle(questDef, resetDaily, resetWeekly)
+            : false;
         });
+
         const savedClaimedQuestRewards = parsed.claimedQuestRewards || [];
-        const resetQuestRewards = savedClaimedQuestRewards.filter((questId: string) => resetQuestClaims.includes(questId));
+        const resetQuestRewards = savedClaimedQuestRewards.filter((questId) =>
+          resetQuestClaims.includes(questId),
+        );
+
         const savedQuestRewardsCache = parsed.questRewardsCache || {};
         const resetQuestRewardsCache = Object.fromEntries(
           Object.entries(savedQuestRewardsCache).filter(([questId, value]) => {
             const questDef = QUESTS.find((quest) => quest.id === questId);
             if (!questDef) return false;
-            if (questDef.tab === "permanent") return true;
-            if (questDef.tab === "daily") return !resetDaily && Boolean(value);
-            if (questDef.tab === "weekly") return !resetWeekly && Boolean(value);
-            return Boolean(value);
+            if (!Boolean(value)) return false;
+            return isQuestForCurrentCycle(questDef, resetDaily, resetWeekly);
           }),
         );
+
         setClaimedQuests(resetQuestClaims);
         setClaimedQuestRewards(resetQuestRewards);
         setQuestRewardsCache(resetQuestRewardsCache as Record<string, boolean>);
         setUnlockedSecretCards(parsed.unlockedSecretCards || []);
+        setPermanentAchievements(parsed.permanentAchievements || []);
 
         const now = Date.now();
         const lastActive = parsed.lastActive || now;
@@ -335,7 +423,7 @@ export default function App() {
         const elapsedMinutes = Math.floor(elapsedMs / 60000);
 
         const savedPassiveKiPerSecond = savedCards.reduce(
-          (total: number, ownedCard: any) => {
+          (total: number, ownedCard) => {
             const card = demoCards.find(
               (item) => item.id === ownedCard.card_id,
             );
@@ -359,35 +447,37 @@ export default function App() {
           cappedMinutes * GAME_CONSTANTS.OFFLINE_ENERGY_PER_MINUTE,
         );
 
-        setBalanceKi((parsed.balanceKi || 0) + earnedKi);
-        setTotalKi((parsed.totalKi || 0) + earnedKi);
+        setBalanceKi((Number(parsed.balanceKi) || 0) + earnedKi);
+        setTotalKi((Number(parsed.totalKi) || 0) + earnedKi);
         setEnergy(
           Math.min(
             GAME_CONSTANTS.ENERGY_MAX,
-            (parsed.energy || GAME_CONSTANTS.ENERGY_MAX) + recoveredEnergy,
+            (Number(parsed.energy) || GAME_CONSTANTS.ENERGY_MAX) +
+              recoveredEnergy,
           ),
         );
 
+        const normalizedProgress = normalizeQuestProgress(
+          parsed.questProgress,
+          todayStamp,
+          weekStamp,
+        );
+        const normalizedTotalKi = Number(parsed.totalKi) || 0;
+
         setQuestProgress({
-          clicks: Number(savedQuestProgress.clicks) || 0,
-          upgrades: Number(savedQuestProgress.upgrades) || 0,
-          totalKi: Number(savedQuestProgress.totalKi) || (parsed.totalKi || 0),
-          level: getLevelIndexByKi(Number(savedQuestProgress.totalKi) || parsed.totalKi || 0),
-          legendaryPurchase: Number(savedQuestProgress.legendaryPurchase) || 0,
-          dailyResetStamp: todayStamp,
-          weeklyResetStamp: weekStamp,
+          ...normalizedProgress,
+          totalKi: Number(normalizedProgress.totalKi) || normalizedTotalKi,
+          level: getLevelIndexByKi(
+            Number(normalizedProgress.totalKi) || normalizedTotalKi,
+          ),
           dailyCounters: resetDaily
             ? { clicks: 0, upgrades: 0 }
-            : {
-                clicks: Number(savedDailyCounters.clicks) || 0,
-                upgrades: Number(savedDailyCounters.upgrades) || 0,
-              },
+            : normalizedProgress.dailyCounters,
           weeklyCounters: resetWeekly
             ? { clicks: 0, upgrades: 0 }
-            : {
-                clicks: Number(savedWeeklyCounters.clicks) || 0,
-                upgrades: Number(savedWeeklyCounters.upgrades) || 0,
-              },
+            : normalizedProgress.weeklyCounters,
+          dailyResetStamp: todayStamp,
+          weeklyResetStamp: weekStamp,
         });
 
         if (earnedKi > 0) {
@@ -398,30 +488,23 @@ export default function App() {
         console.error("Failed to parse saved state", e);
         setBalanceKi(1000);
         setTotalKi(2500);
+        const todayStamp = getLocalDayStamp();
+        const weekStamp = getLocalWeekStamp();
+        setQuestProgress(createFreshQuestProgress(todayStamp, weekStamp));
       }
     } else {
       setBalanceKi(1000);
       setTotalKi(2500);
       const todayStamp = getLocalDayStamp();
       const weekStamp = getLocalWeekStamp();
-      setQuestProgress({
-        clicks: 0,
-        upgrades: 0,
-        totalKi: 2500,
-        level: getLevelIndexByKi(2500),
-        legendaryPurchase: 0,
-        dailyResetStamp: todayStamp,
-        weeklyResetStamp: weekStamp,
-        dailyCounters: { clicks: 0, upgrades: 0 },
-        weeklyCounters: { clicks: 0, upgrades: 0 },
-      });
+      setQuestProgress(createFreshQuestProgress(todayStamp, weekStamp));
     }
     setIsLoaded(true);
   }, []);
 
   useEffect(() => {
     if (!isLoaded) return;
-    const stateToSave = {
+    const stateToSave: SavedGameState = {
       balanceKi,
       totalKi,
       energy,
@@ -433,6 +516,7 @@ export default function App() {
       questRewardsCache,
       questProgress,
       unlockedSecretCards,
+      permanentAchievements,
       lastActive: Date.now(),
     };
     localStorage.setItem("dragonBallKiState", JSON.stringify(stateToSave));
@@ -448,6 +532,7 @@ export default function App() {
     questRewardsCache,
     questProgress,
     unlockedSecretCards,
+    permanentAchievements,
     isLoaded,
   ]);
 
@@ -530,7 +615,7 @@ export default function App() {
     });
   };
 
-  const handlePurchaseCard = (card: any) => {
+  const handlePurchaseCard = (card: GameCard) => {
     const existing = userCards.find((item) => item.card_id === card.id);
     const currentLevel = existing ? existing.current_level : 0;
     const baseCost = Number(card?.base_cost) || 0;
@@ -554,14 +639,16 @@ export default function App() {
         upgrades: current.weeklyCounters.upgrades + 1,
       },
       legendaryPurchase:
-        String(card?.rarity || "").toLowerCase() === "legendary" && currentLevel === 0
+        String(card?.rarity || "").toLowerCase() === "legendary" &&
+        currentLevel === 0
           ? current.legendaryPurchase + 1
           : current.legendaryPurchase,
     }));
     setUserCards((current) => {
       const existingInState = current.find((item) => item.card_id === card.id);
-      if (!existingInState)
+      if (!existingInState) {
         return [...current, { card_id: card.id, current_level: 1 }];
+      }
       return current.map((item) =>
         item.card_id === card.id
           ? { ...item, current_level: item.current_level + 1 }
@@ -571,7 +658,7 @@ export default function App() {
     return true;
   };
 
-  const handlePurchaseBoost = (boost: any) => {
+  const handlePurchaseBoost = (boost: GameBoost) => {
     if (balanceKi < boost.cost) return;
     setBalanceKi((current) => current - boost.cost);
 
@@ -587,7 +674,7 @@ export default function App() {
     });
   };
 
-  const handleCatchDrop = (drop: any) => {
+  const handleCatchDrop = (drop: RandomDrop) => {
     setRandomDrop(null);
     if (drop.type === "ki") {
       const reward = levelMultiplier * 50;
@@ -613,12 +700,17 @@ export default function App() {
     setBalanceKi((b) => b + quest.reward.ki);
     setTotalKi((t) => t + quest.reward.ki);
     const rewardEnergy = quest.reward.energy;
-    if (typeof rewardEnergy === "number")
+    if (typeof rewardEnergy === "number") {
       setEnergy((e) => Math.min(energyMax, e + rewardEnergy));
-    if (quest.reward.unlock)
+    }
+    if (quest.reward.unlock) {
       setUnlockedSecretCards((current) => [
         ...new Set([...current, quest.reward.unlock as string]),
       ]);
+      setPermanentAchievements((current) => [
+        ...new Set([...current, quest.reward.unlock as string]),
+      ]);
+    }
     setClaimedQuests((prev) => [...prev, quest.id]);
     setClaimedQuestRewards((prev) => [...prev, quest.id]);
     setQuestRewardsCache((prev) => ({ ...prev, [quest.id]: true }));
@@ -628,7 +720,7 @@ export default function App() {
     if (totalKi < GAME_CONSTANTS.PRESTIGE_REQ_KI) return;
     if (
       window.confirm(
-        "Are you sure you want to Rebirth? You will lose all Ki, Energy, and Cards, but gain 1 Dragon Ball!",
+        "Rebirth resets your Ki, Energy, cards, boosts, and non-permanent quest progress. You keep your Dragon Balls, permanent achievements, and any unlocked secret cards.",
       )
     ) {
       setDragonBalls((d) => d + 1);
@@ -638,6 +730,8 @@ export default function App() {
       setUserCards([]);
       setActiveBoost(null);
       setClaimedQuests([]);
+      setClaimedQuestRewards([]);
+      setQuestRewardsCache({});
       setQuestProgress((current) => ({
         ...current,
         clicks: 0,
@@ -734,6 +828,24 @@ export default function App() {
                   </div>
                 )}
 
+                {permanentAchievements.length > 0 && (
+                  <div className="rounded-3xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4 backdrop-blur-md">
+                    <h4 className="text-sm font-black uppercase tracking-[0.2em] text-fuchsia-300 mb-3">
+                      Permanent Achievements
+                    </h4>
+                    <div className="space-y-2">
+                      {permanentAchievements.map((item) => (
+                        <div
+                          key={item}
+                          className="rounded-2xl border border-fuchsia-400/10 bg-slate-950/40 px-4 py-3 text-sm text-fuchsia-100"
+                        >
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {filteredQuests.length === 0 && (
                   <div className="text-center text-slate-500 text-xs py-8">
                     No quests available in this category.
@@ -743,7 +855,6 @@ export default function App() {
                   const isClaimed = claimedQuests.includes(quest.id);
                   const rewardKi = quest.reward.ki;
                   const rewardEnergy = quest.reward.energy;
-                  const unlock = quest.reward.unlock;
                   const progress = getQuestProgressValue(quest);
 
                   const isCompleted = progress >= quest.target;
@@ -875,8 +986,9 @@ export default function App() {
                 Rebirth (Prestige)
               </h3>
               <p className="text-xs text-slate-300 mb-4">
-                Reset your progress to gain Dragon Balls. Each Dragon Ball gives a
-                permanent +50% global multiplier!
+                Rebirth resets your Ki, Energy, cards, boosts, and non-permanent
+                quest progress. You keep Dragon Balls, permanent achievements,
+                and unlocked secret cards.
               </p>
               <div className="flex justify-center items-center gap-2 mb-4">
                 <DragonBallIcon
@@ -915,7 +1027,6 @@ export default function App() {
                   : `Need ${formatKi(GAME_CONSTANTS.PRESTIGE_REQ_KI)} Total Ki`}
               </button>
             </div>
-
           </div>
         </div>
       );
@@ -1000,7 +1111,6 @@ export default function App() {
             {renderTabContent()}
           </div>
         </div>
-
       </div>
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
