@@ -485,17 +485,27 @@ export default function App() {
       } catch (e) {
         console.error("Failed to parse saved state", e);
         setBalanceKi(1000);
-        setTotalKi(2500);
+        const initialTotalKi = 2500;
+        setTotalKi(initialTotalKi);
         const todayStamp = getLocalDayStamp();
         const weekStamp = getLocalWeekStamp();
-        setQuestProgress(createFreshQuestProgress(todayStamp, weekStamp));
+        setQuestProgress({
+          ...createFreshQuestProgress(todayStamp, weekStamp),
+          totalKi: initialTotalKi,
+          level: getLevelIndexByKi(initialTotalKi),
+        });
       }
     } else {
       setBalanceKi(1000);
-      setTotalKi(2500);
+      const initialTotalKi = 2500;
+      setTotalKi(initialTotalKi);
       const todayStamp = getLocalDayStamp();
       const weekStamp = getLocalWeekStamp();
-      setQuestProgress(createFreshQuestProgress(todayStamp, weekStamp));
+      setQuestProgress({
+        ...createFreshQuestProgress(todayStamp, weekStamp),
+        totalKi: initialTotalKi,
+        level: getLevelIndexByKi(initialTotalKi),
+      });
     }
     setIsLoaded(true);
   }, []);
