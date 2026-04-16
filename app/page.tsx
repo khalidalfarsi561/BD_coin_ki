@@ -288,6 +288,23 @@ export default function App() {
   const [questProgress, setQuestProgress] = useState<QuestProgressState>(
     createFreshQuestProgress("", ""),
   );
+  const syncTotalKiProgress = (nextTotalKi: number) => {
+    const safeTotalKi = Math.max(0, nextTotalKi);
+    setTotalKi(safeTotalKi);
+    setQuestProgress((current) => ({
+      ...current,
+      totalKi: safeTotalKi,
+      level: getLevelIndexByKi(safeTotalKi),
+    }));
+  };
+  const syncQuestProgressTotalKi = (nextTotalKi: number) => {
+    const safeTotalKi = Math.max(0, nextTotalKi);
+    setQuestProgress((current) => ({
+      ...current,
+      totalKi: safeTotalKi,
+      level: getLevelIndexByKi(safeTotalKi),
+    }));
+  };
   const [permanentAchievements, setPermanentAchievements] = useState<string[]>(
     [],
   );
@@ -449,7 +466,7 @@ export default function App() {
         );
 
         setBalanceKi((Number(parsed.balanceKi) || 0) + earnedKi);
-        setTotalKi((Number(parsed.totalKi) || 0) + earnedKi);
+        syncTotalKiProgress((Number(parsed.totalKi) || 0) + earnedKi);
         setEnergy(
           Math.min(
             localRestoredEnergyMax,
@@ -462,14 +479,13 @@ export default function App() {
           todayStamp,
           weekStamp,
         );
-        const normalizedTotalKi = Number(parsed.totalKi) || 0;
-
+        const normalizedTotalKi =
+          Math.max(0, Number(parsed.totalKi) || 0) + earnedKi;
+        syncQuestProgressTotalKi(normalizedTotalKi);
         setQuestProgress({
           ...normalizedProgress,
-          totalKi: Number(normalizedProgress.totalKi) || normalizedTotalKi,
-          level: getLevelIndexByKi(
-            Number(normalizedProgress.totalKi) || normalizedTotalKi,
-          ),
+          totalKi: normalizedTotalKi,
+          level: getLevelIndexByKi(normalizedTotalKi),
           dailyCounters: resetDaily
             ? { clicks: 0, upgrades: 0 }
             : normalizedProgress.dailyCounters,
@@ -561,7 +577,7 @@ export default function App() {
 
     const passiveInterval = window.setInterval(() => {
       setBalanceKi((current) => current + passiveKiPerSecond);
-      setTotalKi((current) => current + passiveKiPerSecond);
+      syncTotalKiProgress(totalKi + passiveKiPerSecond);
     }, 1000);
 
     return () => window.clearInterval(passiveInterval);
@@ -608,7 +624,7 @@ export default function App() {
     if (energy < 1) return;
     const gain = levelMultiplier * currentMultiplier;
     setBalanceKi((current) => current + gain);
-    setTotalKi((current) => current + gain);
+    syncTotalKiProgress(totalKi + gain);
     setEnergy((current) => Math.max(0, current - 1));
     setQuestProgress((current) => {
       const nextTotalKi = current.totalKi + gain;
@@ -693,11 +709,7 @@ export default function App() {
     if (drop.type === "ki") {
       const reward = levelMultiplier * 50;
       setBalanceKi((b) => b + reward);
-      setTotalKi((t) => t + reward);
-      setQuestProgress((current) => ({
-        ...current,
-        totalKi: current.totalKi + reward,
-      }));
+      syncTotalKiProgress(totalKi + reward);
     } else if (drop.type === "energy") {
       setEnergy((e) => Math.min(restoredEnergyMax, e + 50));
     } else if (drop.type === "boost") {
@@ -712,7 +724,7 @@ export default function App() {
   const handleClaimQuest = (quest: Quest) => {
     if (claimedQuests.includes(quest.id)) return;
     setBalanceKi((b) => b + quest.reward.ki);
-    setTotalKi((t) => t + quest.reward.ki);
+    syncTotalKiProgress(totalKi + quest.reward.ki);
     const rewardEnergy = quest.reward.energy;
     if (typeof rewardEnergy === "number") {
       setEnergy((e) => Math.min(restoredEnergyMax, e + rewardEnergy));
@@ -722,8 +734,8 @@ export default function App() {
         ...new Set([...current, quest.reward.unlock as string]),
       ]);
     }
-    setClaimedQuests((prev) => [...prev, quest.id]);
-    setClaimedQuestRewards((prev) => [...prev, quest.id]);
+    setClaimedQuests((prev) => [...new Set([...prev, quest.id])]);
+    setClaimedQuestRewards((prev) => [...new Set([...prev, quest.id])]);
     setQuestRewardsCache((prev) => ({ ...prev, [quest.id]: true }));
   };
 
@@ -735,7 +747,7 @@ export default function App() {
   const confirmPrestige = () => {
     setDragonBalls((d) => d + 1);
     setBalanceKi(0);
-    setTotalKi(0);
+    syncTotalKiProgress(0);
     setEnergy(GAME_CONSTANTS.ENERGY_MAX);
     setUserCards([]);
     setActiveBoost(null);
@@ -1009,7 +1021,7 @@ export default function App() {
                 </div>
               </div>
               <p className="mb-4 text-[10px] text-slate-400">
-                Current bonus: +{dragonBalls * 50}%
+                Current prestige bonus: x{prestigeMultiplier.toFixed(1)} Ki gain
               </p>
               <button
                 onClick={handlePrestige}
@@ -1100,6 +1112,10 @@ export default function App() {
                   </span>{" "}
                   while away.
                 </p>
+                <p className="mt-1 text-[11px] text-orange-100/80">
+                  Energy was also recovered during your absence, capped by the
+                  offline limit.
+                </p>
               </div>
               <button
                 type="button"
@@ -1151,9 +1167,9 @@ export default function App() {
                   id="prestige-modal-description"
                   className="mt-1 text-sm text-slate-300"
                 >
-                  Rebirth resets your Ki, Energy, cards, boosts, and run-based
-                  quest progress. You keep Dragon Balls and permanent
-                  achievements.
+                  Rebirth resets your Ki, Energy, cards, boosts, and non-permanent
+                  quest progress. You keep Dragon Balls, permanent achievements,
+                  and unlocked secret cards.
                 </p>
               </div>
             </div>

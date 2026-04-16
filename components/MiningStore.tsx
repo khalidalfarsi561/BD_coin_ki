@@ -129,6 +129,9 @@ const resolveRarity = (card: StoreCard) => {
 const isTimedMultiplierBoost = (boost: StoreBoost) =>
   boost.type !== "energy_restore" && Number(boost.durationMs) > 0;
 
+const isEnergyRestoreBoost = (boost: StoreBoost) =>
+  boost.type === "energy_restore";
+
 interface MiningStoreProps {
   cards?: StoreCard[];
   userCards?: OwnedCard[];
@@ -441,9 +444,11 @@ export default function MiningStore({
             const canAfford = balanceKi >= boost.cost;
             const isActive = activeBoost?.id === boost.id;
             const isTimedMultiplier = isTimedMultiplierBoost(boost);
+            const isEnergyRestore = isEnergyRestoreBoost(boost);
             const isLockedByTimedBoost =
               !!activeTimedBoost && isTimedMultiplier && !isActive;
-            const isLocked = (!canAfford && !isActive) || isLockedByTimedBoost;
+            const isLocked =
+              (!canAfford && !isActive) || isLockedByTimedBoost;
             const disabledReason = isLockedByTimedBoost
               ? `Active boost: ${activeTimedBoostRemaining}`
               : !canAfford && !isActive
@@ -462,10 +467,10 @@ export default function MiningStore({
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border border-white/10 bg-slate-950/50 shadow-[0_0_40px_rgba(0,0,0,0.35)] backdrop-blur-md">
                       <div className="text-3xl">
-                        {boost.type === "energy_restore" ? "☄" : "⚡"}
+                        {isEnergyRestore ? "☄" : "⚡"}
                       </div>
                       <div className="mt-1 text-[9px] font-black uppercase tracking-[0.3em] text-white/80">
-                        {boost.type === "energy_restore" ? "Restore" : "Burst"}
+                        {isEnergyRestore ? "Restore" : "Burst"}
                       </div>
                     </div>
                   </div>
@@ -504,9 +509,7 @@ export default function MiningStore({
                         Effect
                       </p>
                       <p className="mt-0.5 text-sm font-black text-orange-300">
-                        {boost.type === "energy_restore"
-                          ? "Energy Restore"
-                          : `${boost.multiplier}x`}
+                        {isEnergyRestore ? "Energy Restore" : `${boost.multiplier}x`}
                       </p>
                     </div>
                     <div className="text-right">
@@ -524,9 +527,7 @@ export default function MiningStore({
                       {isActive ? "Active boost" : "One-time purchase"}
                     </span>
                     <span className="text-[10px] font-medium text-slate-400">
-                      {boost.type === "energy_restore"
-                        ? "Instant use"
-                        : `${boost.durationMs / 1000}s duration`}
+                      {isEnergyRestore ? "Instant use" : `${boost.durationMs / 1000}s duration`}
                     </span>
                   </div>
 
@@ -540,7 +541,7 @@ export default function MiningStore({
                     </p>
                   ) : null}
 
-                  {boost.type === "energy_restore" && !isActive ? (
+                  {isEnergyRestore && !isActive ? (
                     <p className="mt-2 text-[10px] font-medium leading-4 text-slate-400">
                       Instant recharge. Safe to buy while a timed boost is active.
                     </p>
@@ -550,13 +551,13 @@ export default function MiningStore({
                     <button
                       type="button"
                       onClick={() => onPurchaseBoost?.(boost)}
-                      disabled={!canAfford || isLockedByTimedBoost || !!(activeBoost && isTimedMultiplier)}
+                      disabled={!canAfford || isLockedByTimedBoost || (isTimedMultiplier && !!activeBoost && !isActive)}
                       className={`flex-1 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] transition-all ${
                         isActive
                           ? "bg-green-500 text-white shadow-[0_0_18px_rgba(34,197,94,0.35)]"
                           : isLockedByTimedBoost
                             ? "cursor-not-allowed border border-slate-700/60 bg-slate-800/60 text-slate-500 opacity-70"
-                            : canAfford && !(activeBoost && isTimedMultiplier)
+                            : canAfford && !(isTimedMultiplier && !!activeBoost && !isActive)
                               ? "bg-orange-500 text-white shadow-[0_0_18px_rgba(249,115,22,0.35)] hover:bg-orange-400"
                               : "cursor-not-allowed border border-slate-700/60 bg-slate-800/60 text-slate-500 opacity-70"
                       }`}
