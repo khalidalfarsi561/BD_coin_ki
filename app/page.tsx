@@ -29,6 +29,16 @@ const formatKi = (value: number) => {
   }).format(Math.max(0, Math.floor(Number(value) || 0)));
 };
 
+const formatDuration = (totalSeconds: number) => {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+};
+
 type CardRarity = "common" | "rare" | "epic" | "legendary";
 
 type DemoCard = GameCard & {
@@ -281,11 +291,8 @@ export default function App() {
   const [permanentAchievements, setPermanentAchievements] = useState<string[]>(
     [],
   );
-  // Persisted claim ids for quests that were completed in the current cycle.
   const [claimedQuests, setClaimedQuests] = useState<string[]>([]);
-  // Tracks which reward grants were already processed so reloads don't double-apply them.
   const [claimedQuestRewards, setClaimedQuestRewards] = useState<string[]>([]);
-  // Caches quest reward unlock state for stable UI restoration across reloads.
   const [questRewardsCache, setQuestRewardsCache] = useState<Record<string, boolean>>({});
   const [showOfflinePopup, setShowOfflinePopup] = useState(false);
   const [balanceKi, setBalanceKi] = useState<number>(0);
@@ -301,13 +308,17 @@ export default function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [dragonBalls, setDragonBalls] = useState(0);
   const [randomDrop, setRandomDrop] = useState<RandomDrop | null>(null);
+  const [showPrestigeModal, setShowPrestigeModal] = useState(false);
 
   const maxEnergyBonus = useMemo(() => {
     const energyCard = userCards.find((c) => c.card_id === "card-3");
     return energyCard ? energyCard.current_level * 10 : 0;
   }, [userCards]);
 
-  const energyMax = GAME_CONSTANTS.ENERGY_MAX + maxEnergyBonus;
+  const restoredEnergyMax = useMemo(
+    () => GAME_CONSTANTS.ENERGY_MAX + maxEnergyBonus,
+    [maxEnergyBonus],
+  );
   const prestigeMultiplier = 1 + dragonBalls * 0.5;
 
   const level = useMemo(() => getLevelByKi(totalKi), [totalKi]);
@@ -439,7 +450,7 @@ export default function App() {
         setTotalKi((Number(parsed.totalKi) || 0) + earnedKi);
         setEnergy(
           Math.min(
-            GAME_CONSTANTS.ENERGY_MAX,
+            restoredEnergyMax,
             (Number(parsed.energy) || GAME_CONSTANTS.ENERGY_MAX) +
               recoveredEnergy,
           ),
@@ -488,7 +499,7 @@ export default function App() {
       setQuestProgress(createFreshQuestProgress(todayStamp, weekStamp));
     }
     setIsLoaded(true);
-  }, []);
+  }, [restoredEnergyMax]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -538,11 +549,11 @@ export default function App() {
   useEffect(() => {
     if (!isLoaded) return;
     const energyInterval = window.setInterval(() => {
-      setEnergy((current) => Math.min(energyMax, current + 1));
+      setEnergy((current) => Math.min(restoredEnergyMax, current + 1));
     }, 1400);
 
     return () => window.clearInterval(energyInterval);
-  }, [isLoaded, energyMax]);
+  }, [isLoaded, restoredEnergyMax]);
 
   useEffect(() => {
     if (!isLoaded || passiveKiPerSecond <= 0) return undefined;
@@ -575,6 +586,22 @@ export default function App() {
     }, 60000);
     return () => window.clearInterval(dropInterval);
   }, [isLoaded, randomDrop]);
+
+  useEffect(() => {
+    if (!showPrestigeModal) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowPrestigeModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showPrestigeModal]);
 
   const handleClickKi = () => {
     if (energy < 1) return;
@@ -649,7 +676,7 @@ export default function App() {
     setBalanceKi((current) => current - boost.cost);
 
     if (boost.type === "energy_restore") {
-      setEnergy(energyMax);
+      setEnergy(restoredEnergyMax);
       return;
     }
 
@@ -671,7 +698,7 @@ export default function App() {
         totalKi: current.totalKi + reward,
       }));
     } else if (drop.type === "energy") {
-      setEnergy((e) => Math.min(energyMax, e + 50));
+      setEnergy((e) => Math.min(restoredEnergyMax, e + 50));
     } else if (drop.type === "boost") {
       setActiveBoost({
         id: "random-boost",
@@ -687,7 +714,7 @@ export default function App() {
     setTotalKi((t) => t + quest.reward.ki);
     const rewardEnergy = quest.reward.energy;
     if (typeof rewardEnergy === "number") {
-      setEnergy((e) => Math.min(energyMax, e + rewardEnergy));
+      setEnergy((e) => Math.min(restoredEnergyMax, e + rewardEnergy));
     }
     if (quest.reward.unlock) {
       setPermanentAchievements((current) => [
@@ -701,30 +728,29 @@ export default function App() {
 
   const handlePrestige = () => {
     if (totalKi < GAME_CONSTANTS.PRESTIGE_REQ_KI) return;
-    if (
-      window.confirm(
-        "Rebirth resets your Ki, Energy, cards, boosts, and run-based quest progress. You keep your Dragon Balls and permanent achievements.",
-      )
-    ) {
-      setDragonBalls((d) => d + 1);
-      setBalanceKi(0);
-      setTotalKi(0);
-      setEnergy(GAME_CONSTANTS.ENERGY_MAX);
-      setUserCards([]);
-      setActiveBoost(null);
-      setClaimedQuests([]);
-      setClaimedQuestRewards([]);
-      setQuestRewardsCache({});
-      setQuestProgress((current) => ({
-        ...current,
-        clicks: 0,
-        upgrades: 0,
-        totalKi: 0,
-        legendaryPurchase: 0,
-        dailyCounters: { clicks: 0, upgrades: 0 },
-        weeklyCounters: { clicks: 0, upgrades: 0 },
-      }));
-    }
+    setShowPrestigeModal(true);
+  };
+
+  const confirmPrestige = () => {
+    setDragonBalls((d) => d + 1);
+    setBalanceKi(0);
+    setTotalKi(0);
+    setEnergy(GAME_CONSTANTS.ENERGY_MAX);
+    setUserCards([]);
+    setActiveBoost(null);
+    setClaimedQuests([]);
+    setClaimedQuestRewards([]);
+    setQuestRewardsCache({});
+    setQuestProgress((current) => ({
+      ...current,
+      clicks: 0,
+      upgrades: 0,
+      totalKi: 0,
+      legendaryPurchase: 0,
+      dailyCounters: { clicks: 0, upgrades: 0 },
+      weeklyCounters: { clicks: 0, upgrades: 0 },
+    }));
+    setShowPrestigeModal(false);
   };
 
   const renderTabContent = () => {
@@ -734,7 +760,7 @@ export default function App() {
           <GokuClicker
             balanceKi={balanceKi}
             energy={energy}
-            energyMax={energyMax}
+            energyMax={restoredEnergyMax}
             totalKi={totalKi}
             levelName={level.name}
             levelMultiplier={levelMultiplier}
@@ -743,6 +769,7 @@ export default function App() {
             levelImage={undefined}
             dragonBalls={dragonBalls}
             onClickKi={handleClickKi}
+            onOpenMining={() => setActiveTab("mining")}
             randomDrop={randomDrop}
             onCatchDrop={handleCatchDrop}
           />
@@ -772,16 +799,16 @@ export default function App() {
         <div className="flex w-full justify-center">
           <div className="w-full max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
             <div className="rounded-3xl border border-white/5 bg-slate-900/50 p-6 backdrop-blur-md">
-              <h3 className="text-xl font-black text-white mb-6 uppercase tracking-widest text-center shadow-black drop-shadow-md">
+              <h3 className="mb-6 text-center text-xl font-black uppercase tracking-widest text-white drop-shadow-md shadow-black">
                 Quests & Achievements
               </h3>
 
-              <div className="flex bg-slate-950/50 p-1 rounded-xl mb-6">
+              <div className="mb-6 flex rounded-xl bg-slate-950/50 p-1">
                 {(["daily", "weekly", "permanent"] as QuestTab[]).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setQuestTab(tab)}
-                    className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors ${
+                    className={`flex-1 rounded-lg py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
                       questTab === tab
                         ? "bg-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]"
                         : "text-slate-500 hover:text-slate-300"
@@ -795,11 +822,11 @@ export default function App() {
               <div className="space-y-4">
                 {permanentAchievements.some((item) => item.startsWith("Secret Card:")) && (
                   <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-4 backdrop-blur-md">
-                    <h4 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-300 mb-3">
+                    <h4 className="mb-3 text-sm font-black uppercase tracking-[0.2em] text-cyan-300">
                       Secret Unlocks
                     </h4>
-                    <p className="mb-3 text-[11px] text-cyan-100/70">
-                      Unlock-type rewards earned from quests.
+                    <p className="mb-3 text-[11px] text-cyan-100/75">
+                      Special unlock rewards earned from quests.
                     </p>
                     <div className="space-y-2">
                       {permanentAchievements
@@ -818,10 +845,10 @@ export default function App() {
 
                 {permanentAchievements.length > 0 && (
                   <div className="rounded-3xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4 backdrop-blur-md">
-                    <h4 className="text-sm font-black uppercase tracking-[0.2em] text-fuchsia-300 mb-3">
+                    <h4 className="mb-3 text-sm font-black uppercase tracking-[0.2em] text-fuchsia-300">
                       Permanent Achievements
                     </h4>
-                    <p className="mb-3 text-[11px] text-fuchsia-100/70">
+                    <p className="mb-3 text-[11px] text-fuchsia-100/75">
                       Unlocked across all rebirths.
                     </p>
                     <div className="space-y-2">
@@ -838,7 +865,7 @@ export default function App() {
                 )}
 
                 {filteredQuests.length === 0 && (
-                  <div className="text-center text-slate-500 text-xs py-8">
+                  <div className="py-8 text-center text-xs text-slate-500">
                     No quests available in this category.
                   </div>
                 )}
@@ -857,24 +884,24 @@ export default function App() {
                   return (
                     <div
                       key={quest.id}
-                      className="rounded-2xl border border-white/5 bg-slate-800/40 p-5 shadow-lg relative overflow-hidden flex flex-col"
+                      className="relative flex flex-col overflow-hidden rounded-2xl border border-white/5 bg-slate-800/40 p-5 shadow-lg"
                     >
-                      <div className="flex justify-between items-start mb-4 relative z-10">
-                        <div className="flex gap-3 items-center">
-                          <div className="text-3xl drop-shadow-lg scale-110 pl-1">
+                      <div className="relative z-10 mb-4 flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="pl-1 text-3xl drop-shadow-lg scale-110">
                             <quest.icon className="h-6 w-6 text-orange-300" />
                           </div>
                           <div>
-                            <h4 className="text-sm font-bold text-white tracking-tight">
+                            <h4 className="text-sm font-bold tracking-tight text-white">
                               {quest.title}
                             </h4>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
+                            <p className="mt-0.5 text-[11px] text-slate-400">
                               {quest.desc}
                             </p>
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <span className="inline-block px-2 py-0.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded text-[10px] font-black tracking-widest uppercase">
+                        <div className="shrink-0 text-right">
+                          <span className="inline-block rounded border border-orange-500/30 bg-orange-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-orange-400">
                             +{formatKi(rewardKi)} Ki
                             {rewardEnergy !== undefined
                               ? ` +${rewardEnergy} Energy`
@@ -883,23 +910,23 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4 mt-auto relative z-10">
-                        <div className="flex-1 relative h-2 bg-slate-900 rounded-full shadow-[inset_0_1px_3px_rgba(0,0,0,1)] border border-blue-500/10 flex items-center">
+                      <div className="relative z-10 mt-auto flex items-center gap-4">
+                        <div className="relative flex h-2 flex-1 items-center rounded-full border border-blue-500/10 bg-slate-900 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]">
                           <div
-                            className="absolute left-0 h-full bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.6)] transition-all duration-500"
+                            className="absolute left-0 h-full rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)] transition-all duration-500"
                             style={{ width: `${percent}%` }}
                           />
                           <div
-                            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-all duration-500 z-10"
+                            className="absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 transition-all duration-500"
                             style={{ left: `${Math.max(4, percent)}%` }}
                           >
                             <DragonBallIcon
                               stars={1}
-                              className="w-4 h-4 drop-shadow-[0_0_10px_rgba(255,165,0,0.8)]"
+                              className="h-4 w-4 drop-shadow-[0_0_10px_rgba(255,165,0,0.8)]"
                             />
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold text-slate-400 w-16 text-right font-mono">
+                        <span className="w-16 text-right font-mono text-[10px] font-bold text-slate-400">
                           {formatKi(Math.floor(progress))} /{" "}
                           {formatKi(quest.target)}
                         </span>
@@ -907,21 +934,21 @@ export default function App() {
 
                       {quest.reward.unlock && (
                         <div className="mt-4 text-[10px] font-bold uppercase tracking-widest text-cyan-300/90">
-                          Secret Unlock: {quest.reward.unlock}
+                          Secret unlock: {quest.reward.unlock}
                         </div>
                       )}
 
                       {isCompleted && !isClaimed && (
                         <button
                           onClick={() => handleClaimQuest(quest)}
-                          className="mt-4 w-full py-2.5 rounded-xl bg-orange-500 text-white text-xs font-black uppercase tracking-widest hover:bg-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.5)] transition-all active:scale-95 relative z-10 flex items-center justify-center gap-2"
+                          className="relative z-10 mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 py-2.5 text-xs font-black uppercase tracking-widest text-white transition-all hover:bg-orange-400 active:scale-95 shadow-[0_0_15px_rgba(249,115,22,0.5)]"
                         >
                           <span>Claim Reward</span>
                           <span>🎁</span>
                         </button>
                       )}
                       {isClaimed && (
-                        <div className="mt-4 text-center py-2 text-[10px] font-black tracking-widest text-green-500 uppercase bg-green-500/10 rounded-xl relative z-10">
+                        <div className="relative z-10 mt-4 rounded-xl bg-green-500/10 py-2 text-center text-[10px] font-black uppercase tracking-widest text-green-500">
                           Claimed
                         </div>
                       )}
@@ -940,10 +967,10 @@ export default function App() {
         <div className="flex w-full justify-center">
           <div className="w-full max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
             <div className="rounded-3xl border border-white/5 bg-slate-900/50 p-6 backdrop-blur-md">
-              <div className="flex justify-between items-start">
+              <div className="flex items-start justify-between">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                    Wallet Balance
+                    Wallet balance
                   </p>
                   <p className="mt-2 text-3xl font-black text-white">
                     {Math.floor(balanceKi).toLocaleString()}{" "}
@@ -954,9 +981,9 @@ export default function App() {
                   <div className="flex flex-col items-center">
                     <DragonBallIcon
                       stars={dragonBalls % 7 === 0 ? 7 : dragonBalls % 7}
-                      className="w-12 h-12 drop-shadow-[0_0_20px_rgba(249,115,22,0.8)] animate-pulse"
+                      className="h-12 w-12 animate-pulse drop-shadow-[0_0_20px_rgba(249,115,22,0.8)]"
                     />
-                    <span className="text-[10px] font-bold text-orange-400 mt-1">
+                    <span className="mt-1 text-[10px] font-bold text-orange-400">
                       x{dragonBalls}
                     </span>
                   </div>
@@ -964,7 +991,7 @@ export default function App() {
               </div>
               <div className="mt-6 rounded-2xl bg-slate-950/50 p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                  Passive Income
+                  Passive income
                 </p>
                 <p className="mt-1 text-lg font-bold text-green-400">
                   +{passiveKiPerSecond.toFixed(2)} Ki/s
@@ -973,15 +1000,15 @@ export default function App() {
             </div>
 
             <div className="rounded-3xl border border-orange-500/20 bg-gradient-to-b from-orange-500/10 to-transparent p-6 backdrop-blur-md text-center">
-              <h3 className="text-lg font-bold text-orange-400 mb-2">
+              <h3 className="mb-2 text-lg font-bold text-orange-400">
                 Rebirth (Prestige)
               </h3>
-              <p className="text-xs text-slate-300 mb-4">
+              <p className="mb-4 text-xs text-slate-300">
                 Rebirth resets your Ki, Energy, cards, boosts, and run-based
                 quest progress. You keep Dragon Balls and permanent
                 achievements.
               </p>
-              <div className="flex justify-center items-center gap-2 mb-4">
+              <div className="mb-4 flex items-center justify-center gap-2">
                 <DragonBallIcon
                   stars={
                     dragonBalls > 0
@@ -990,9 +1017,9 @@ export default function App() {
                         : dragonBalls % 7
                       : 4
                   }
-                  className="w-12 h-12 drop-shadow-[0_0_20px_rgba(249,115,22,0.8)] animate-pulse"
+                  className="h-12 w-12 animate-pulse drop-shadow-[0_0_20px_rgba(249,115,22,0.8)]"
                 />
-                <div className="text-left ml-2">
+                <div className="ml-2 text-left">
                   <span className="block text-2xl font-black text-white">
                     {dragonBalls}
                   </span>
@@ -1001,21 +1028,21 @@ export default function App() {
                   </span>
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 mb-4">
-                Current Bonus: +{dragonBalls * 50}%
+              <p className="mb-4 text-[10px] text-slate-400">
+                Current bonus: +{dragonBalls * 50}%
               </p>
               <button
                 onClick={handlePrestige}
                 disabled={totalKi < GAME_CONSTANTS.PRESTIGE_REQ_KI}
-                className={`w-full py-3 rounded-xl font-bold uppercase tracking-wider transition-all ${
+                className={`w-full rounded-xl py-3 font-bold uppercase tracking-wider transition-all ${
                   totalKi >= GAME_CONSTANTS.PRESTIGE_REQ_KI
                     ? "bg-orange-500 text-white hover:bg-orange-400 shadow-[0_0_20px_rgba(249,115,22,0.4)]"
-                    : "bg-slate-800 text-slate-500 cursor-not-allowed"
+                    : "cursor-not-allowed bg-slate-800 text-slate-500"
                 }`}
               >
                 {totalKi >= GAME_CONSTANTS.PRESTIGE_REQ_KI
-                  ? "Rebirth Now"
-                  : `Need ${formatKi(GAME_CONSTANTS.PRESTIGE_REQ_KI)} Total Ki`}
+                  ? "Rebirth now"
+                  : `Need ${formatKi(GAME_CONSTANTS.PRESTIGE_REQ_KI)} total Ki`}
               </button>
             </div>
           </div>
@@ -1040,9 +1067,15 @@ export default function App() {
 
   if (!isLoaded) {
     return (
-      <main className="min-h-screen bg-[#050B14] flex items-center justify-center">
-        <div className="animate-pulse text-orange-500 font-bold tracking-widest uppercase">
-          Loading...
+      <main className="flex min-h-screen items-center justify-center bg-[#050B14]">
+        <div className="rounded-3xl border border-white/5 bg-slate-900/70 px-6 py-5 text-center backdrop-blur-md">
+          <div className="mx-auto mb-3 h-10 w-10 animate-pulse rounded-full border border-orange-500/30 border-t-orange-400" />
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-orange-400">
+            Loading your battle state
+          </p>
+          <p className="mt-2 text-[11px] text-slate-400">
+            Restoring Ki, cards, energy, and quest progress...
+          </p>
         </div>
       </main>
     );
@@ -1050,10 +1083,10 @@ export default function App() {
 
   return (
     <main
-      className={`bg-[#050B14] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(249,115,22,0.15),rgba(255,255,255,0))] text-slate-200 font-sans selection:bg-orange-500/30 flex flex-col ${activeTab === "home" ? "h-[100dvh] overflow-hidden" : "min-h-screen pb-28 pt-6 px-4 overflow-auto"}`}
+      className={`flex flex-col bg-[#050B14] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(249,115,22,0.15),rgba(255,255,255,0))] font-sans text-slate-200 selection:bg-orange-500/30 ${activeTab === "home" ? "h-[100dvh] overflow-hidden" : "min-h-screen overflow-auto px-4 pb-28 pt-6"}`}
     >
       <div
-        className={`mx-auto flex w-full max-w-md flex-col lg:max-w-5xl lg:flex-row lg:items-start flex-1 ${activeTab === "home" ? "h-full" : "gap-6"}`}
+        className={`mx-auto flex w-full max-w-md flex-1 flex-col lg:max-w-5xl lg:flex-row lg:items-start ${activeTab === "home" ? "h-full" : "gap-6"}`}
       >
         <div
           className={`flex w-full flex-col lg:w-1/2 lg:sticky lg:top-6 ${activeTab === "home" ? "h-full" : "gap-6"}`}
@@ -1068,7 +1101,7 @@ export default function App() {
                   $Ki Battle
                 </h1>
               </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 border border-white/10">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-800">
                 <span className="text-lg">🐉</span>
               </div>
             </header>
@@ -1078,9 +1111,9 @@ export default function App() {
             <div className="animate-in fade-in slide-in-from-top-4 flex items-center justify-between rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 backdrop-blur-sm">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-orange-400">
-                  Welcome Back
+                  Welcome back
                 </p>
-                <p className="text-sm font-medium text-orange-100 mt-0.5">
+                <p className="mt-0.5 text-sm font-medium text-orange-100">
                   You earned{" "}
                   <span className="font-bold text-orange-400">
                     {offlineKiEarned} Ki
@@ -1090,6 +1123,8 @@ export default function App() {
               </div>
               <button
                 type="button"
+                aria-label="Close offline rewards popup"
+                title="Close offline rewards popup"
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/20 text-orange-300 transition-colors hover:bg-orange-500/30"
                 onClick={() => setShowOfflinePopup(false)}
               >
@@ -1103,6 +1138,75 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {showPrestigeModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="prestige-modal-title"
+          aria-describedby="prestige-modal-description"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowPrestigeModal(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl border border-orange-500/20 bg-slate-950 p-6 shadow-2xl shadow-black/50"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
+                <Crown className="h-5 w-5" />
+              </div>
+              <div>
+                <h2
+                  id="prestige-modal-title"
+                  className="text-xl font-black tracking-tight text-white"
+                >
+                  Confirm Rebirth
+                </h2>
+                <p
+                  id="prestige-modal-description"
+                  className="mt-1 text-sm text-slate-300"
+                >
+                  Rebirth resets your Ki, Energy, cards, boosts, and run-based
+                  quest progress. You keep Dragon Balls and permanent
+                  achievements.
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-5 rounded-2xl border border-white/5 bg-white/5 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                What you keep
+              </p>
+              <p className="mt-2 text-sm text-slate-200">
+                Dragon Balls, permanent achievements, and quest unlocks remain
+                safe.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPrestigeModal(false)}
+                className="flex-1 rounded-xl border border-white/10 bg-slate-800 px-4 py-3 text-sm font-bold uppercase tracking-wider text-slate-200 transition-colors hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmPrestige}
+                className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-orange-400"
+              >
+                Rebirth Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </main>

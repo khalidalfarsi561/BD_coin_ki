@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 
 import { GameBoost, GameCard, OwnedCard } from "@/lib/utils";
@@ -47,6 +47,22 @@ const formatKi = (value: number) => {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(Math.max(0, Math.floor(Number(value) || 0)));
+};
+
+const formatDuration = (ms: number) => {
+  const safeMs = Math.max(0, Math.floor(ms));
+  const totalSeconds = Math.ceil(safeMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
 };
 
 const RARITY_DEFS: RarityDef[] = [
@@ -110,6 +126,9 @@ const resolveRarity = (card: StoreCard) => {
   return explicit || getFallbackRarity(card.base_cost);
 };
 
+const isTimedMultiplierBoost = (boost: StoreBoost) =>
+  boost.type !== "energy_restore" && Number(boost.durationMs) > 0;
+
 interface MiningStoreProps {
   cards?: StoreCard[];
   userCards?: OwnedCard[];
@@ -135,6 +154,12 @@ export default function MiningStore({
   const [sortBy, setSortBy] = useState<SortBy>("cost");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [justUpgraded, setJustUpgraded] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const handlePurchaseClick = (card: DisplayCard) => {
     const didPurchase = onPurchaseCard?.(card) ?? false;
@@ -190,13 +215,16 @@ export default function MiningStore({
     });
   }, [cards, ownedMap, sortBy, sortOrder]);
 
-  const boostRows = boosts;
+  const activeTimedBoost = activeBoost && activeBoost.expiresAt > now ? activeBoost : null;
+  const activeTimedBoostRemaining = activeTimedBoost
+    ? formatDuration(activeTimedBoost.expiresAt - now)
+    : null;
 
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between px-2">
         <div>
-          <h3 className="text-lg font-bold text-white tracking-tight">
+          <h3 className="text-lg font-bold tracking-tight text-white">
             Mining Store
           </h3>
           <p className="text-xs text-slate-400">Passive income generators</p>
@@ -211,17 +239,17 @@ export default function MiningStore({
         </div>
       </div>
 
-      <div className="flex items-center justify-between px-2 mb-2">
+      <div className="mb-2 flex items-center justify-between px-2">
         <div className="flex gap-2">
           <button
             onClick={() => setStoreTab("cards")}
-            className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${storeTab === "cards" ? "bg-orange-500 text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
+            className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${storeTab === "cards" ? "bg-orange-500 text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
           >
             Cards
           </button>
           <button
             onClick={() => setStoreTab("boosts")}
-            className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${storeTab === "boosts" ? "bg-orange-500 text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
+            className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${storeTab === "boosts" ? "bg-orange-500 text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
           >
             Boosts
           </button>
@@ -229,7 +257,7 @@ export default function MiningStore({
         {storeTab === "cards" && (
           <div className="flex items-center gap-2">
             <select
-              className="bg-slate-800 text-xs text-slate-300 rounded px-2 py-1 border border-white/10 outline-none"
+              className="rounded border border-white/10 bg-slate-800 px-2 py-1 text-xs text-slate-300 outline-none"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortBy)}
             >
@@ -241,7 +269,7 @@ export default function MiningStore({
               onClick={() =>
                 setSortOrder((o) => (o === "asc" ? "desc" : "asc"))
               }
-              className="bg-slate-800 text-xs text-slate-300 rounded px-2 py-1 border border-white/10 hover:bg-slate-700 transition-colors"
+              className="rounded border border-white/10 bg-slate-800 px-2 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-700"
             >
               {sortOrder === "asc" ? "↑" : "↓"}
             </button>
@@ -261,12 +289,12 @@ export default function MiningStore({
 
               return (
                 <motion.article
+                  key={card.id}
                   layout
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  key={card.id}
-                  className={`group relative overflow-hidden rounded-[28px] border bg-gradient-to-b ${card.rarityDef.glow} ${card.rarityDef.borderGlow} aspect-[3/4] shadow-[0_20px_60px_rgba(0,0,0,0.35)]`}
+                  className={`group relative aspect-[3/4] overflow-hidden rounded-[28px] border bg-gradient-to-b ${card.rarityDef.glow} ${card.rarityDef.borderGlow} shadow-[0_20px_60px_rgba(0,0,0,0.35)]`}
                 >
                   <AnimatePresence>
                     {justUpgraded === card.id && (
@@ -274,7 +302,7 @@ export default function MiningStore({
                         initial={{ opacity: 0, scale: 0.5 }}
                         animate={{ opacity: 1, scale: 1.2 }}
                         exit={{ opacity: 0 }}
-                        className="absolute inset-0 m-auto h-fit w-fit pointer-events-none z-20 text-lg font-black text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.9)]"
+                        className="pointer-events-none absolute inset-0 z-20 m-auto h-fit w-fit text-lg font-black text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.9)]"
                       >
                         UPGRADED!
                       </motion.div>
@@ -302,7 +330,7 @@ export default function MiningStore({
                       <div
                         className={`absolute inset-0 flex items-center justify-center bg-gradient-to-br ${card.accent || card.rarityDef.glow} ${card.glow || ""}`}
                       >
-                        <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border border-white/10 bg-slate-950/45 backdrop-blur-md shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+                        <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border border-white/10 bg-slate-950/45 shadow-[0_0_40px_rgba(0,0,0,0.35)] backdrop-blur-md">
                           <div className="text-3xl">
                             {card.level > 0 ? "⚡" : "✦"}
                           </div>
@@ -334,7 +362,7 @@ export default function MiningStore({
                     </div>
 
                     <div className="relative z-10 -mt-12 rounded-[24px] border border-white/10 bg-slate-950/90 p-4 shadow-[0_-12px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                      <h4 className="text-sm font-black text-white line-clamp-1">
+                      <h4 className="text-sm font-black line-clamp-1 text-white">
                         {card.name}
                       </h4>
                       <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-400">
@@ -380,19 +408,17 @@ export default function MiningStore({
                           disabled={!canAfford}
                           className={`flex-1 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] transition-all ${
                             canAfford
-                              ? "bg-orange-500 text-white hover:bg-orange-400 shadow-[0_0_18px_rgba(249,115,22,0.35)]"
+                              ? "bg-orange-500 text-white shadow-[0_0_18px_rgba(249,115,22,0.35)] hover:bg-orange-400"
                               : "cursor-not-allowed border border-slate-700/60 bg-slate-800/60 text-slate-500 opacity-70"
                           }`}
                         >
                           {isOwned ? "Upgrade" : "Buy"}
                         </button>
-                        <button
-                          type="button"
-                          disabled
-                          className="rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] text-slate-400"
+                        <span
+                          className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] ${card.rarityDef.badge} bg-white/5`}
                         >
                           {card.rarityDef.label}
-                        </button>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -411,10 +437,19 @@ export default function MiningStore({
 
       {storeTab === "boosts" && (
         <div className="grid grid-cols-2 gap-4">
-          {boostRows.map((boost) => {
+          {boosts.map((boost) => {
             const canAfford = balanceKi >= boost.cost;
             const isActive = activeBoost?.id === boost.id;
-            const isLocked = !canAfford && !isActive;
+            const isTimedMultiplier = isTimedMultiplierBoost(boost);
+            const isLockedByTimedBoost =
+              !!activeTimedBoost && isTimedMultiplier && !isActive;
+            const isLocked = (!canAfford && !isActive) || isLockedByTimedBoost;
+            const disabledReason = isLockedByTimedBoost
+              ? `Active boost: ${activeTimedBoostRemaining}`
+              : !canAfford && !isActive
+                ? "Not enough Ki"
+                : null;
+
             return (
               <article
                 key={boost.id}
@@ -425,7 +460,7 @@ export default function MiningStore({
                     className={`absolute inset-0 bg-gradient-to-br ${isActive ? "from-emerald-500/25 via-emerald-400/10 to-slate-950" : "from-orange-500/20 via-amber-400/10 to-slate-950"}`}
                   />
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border border-white/10 bg-slate-950/50 backdrop-blur-md shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+                    <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border border-white/10 bg-slate-950/50 shadow-[0_0_40px_rgba(0,0,0,0.35)] backdrop-blur-md">
                       <div className="text-3xl">
                         {boost.type === "energy_restore" ? "☄" : "⚡"}
                       </div>
@@ -456,7 +491,7 @@ export default function MiningStore({
                 </div>
 
                 <div className="relative z-10 -mt-12 rounded-[24px] border border-white/10 bg-slate-950/90 p-4 shadow-[0_-12px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                  <h4 className="text-sm font-black text-white line-clamp-1">
+                  <h4 className="text-sm font-black line-clamp-1 text-white">
                     {boost.name}
                   </h4>
                   <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-400">
@@ -495,25 +530,44 @@ export default function MiningStore({
                     </span>
                   </div>
 
+                  {isActive && activeTimedBoostRemaining ? (
+                    <p className="mt-2 text-[10px] font-medium leading-4 text-emerald-300">
+                      Ends in {activeTimedBoostRemaining}
+                    </p>
+                  ) : isLockedByTimedBoost && disabledReason ? (
+                    <p className="mt-2 text-[10px] font-medium leading-4 text-slate-400">
+                      {disabledReason}
+                    </p>
+                  ) : null}
+
+                  {boost.type === "energy_restore" && !isActive ? (
+                    <p className="mt-2 text-[10px] font-medium leading-4 text-slate-400">
+                      Instant recharge. Safe to buy while a timed boost is active.
+                    </p>
+                  ) : null}
+
                   <div className="mt-4 flex gap-2">
                     <button
+                      type="button"
                       onClick={() => onPurchaseBoost?.(boost)}
-                      disabled={!canAfford || !!activeBoost}
+                      disabled={!canAfford || isLockedByTimedBoost || !!(activeBoost && isTimedMultiplier)}
                       className={`flex-1 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] transition-all ${
                         isActive
                           ? "bg-green-500 text-white shadow-[0_0_18px_rgba(34,197,94,0.35)]"
-                          : canAfford && !activeBoost
-                            ? "bg-orange-500 text-white hover:bg-orange-400 shadow-[0_0_18px_rgba(249,115,22,0.35)]"
-                            : "cursor-not-allowed border border-slate-700/60 bg-slate-800/60 text-slate-500 opacity-70"
+                          : isLockedByTimedBoost
+                            ? "cursor-not-allowed border border-slate-700/60 bg-slate-800/60 text-slate-500 opacity-70"
+                            : canAfford && !(activeBoost && isTimedMultiplier)
+                              ? "bg-orange-500 text-white shadow-[0_0_18px_rgba(249,115,22,0.35)] hover:bg-orange-400"
+                              : "cursor-not-allowed border border-slate-700/60 bg-slate-800/60 text-slate-500 opacity-70"
                       }`}
                     >
                       {isActive
                         ? "Active"
-                        : activeBoost
-                          ? "Wait"
-                          : canAfford
-                            ? "Buy"
-                            : "Locked"}
+                        : isLockedByTimedBoost
+                          ? `Wait ${activeTimedBoostRemaining}`
+                          : !canAfford
+                            ? "Locked"
+                            : "Buy"}
                     </button>
                   </div>
                 </div>

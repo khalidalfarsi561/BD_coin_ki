@@ -25,6 +25,7 @@ interface GokuClickerProps {
   levelImage?: string;
   dragonBalls?: number;
   onClickKi?: (count: number) => void;
+  onOpenMining?: () => void;
   loadingText?: string;
   randomDrop?: { id: string; x: number; y: number; type: DropType } | null;
   onCatchDrop?: (drop: {
@@ -47,6 +48,7 @@ export default function GokuClicker({
   levelImage,
   dragonBalls = 0,
   onClickKi,
+  onOpenMining,
   loadingText = "Gathering Ki...",
   randomDrop = null,
   onCatchDrop,
@@ -133,12 +135,12 @@ export default function GokuClicker({
             disabled={isDisabled}
             className={`relative z-10 flex h-52 w-52 items-center justify-center rounded-full bg-slate-800 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:grayscale sm:h-64 sm:w-64 ${levelAura} shadow-[0_0_50px_rgba(249,115,22,0.2)]`}
           >
-            <div className="absolute inset-1 overflow-hidden rounded-full border-2 border-white/10 bg-slate-900 flex items-center justify-center">
+            <div className="absolute inset-1 flex items-center justify-center overflow-hidden rounded-full border-2 border-white/10 bg-slate-900">
               <div
                 className={`absolute inset-0 bg-gradient-to-br ${levelAura} from-orange-400/25 via-transparent to-indigo-500/25`}
               />
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="flex h-28 w-28 items-center justify-center rounded-full border border-white/10 bg-slate-950/40 backdrop-blur-md shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+                <div className="flex h-28 w-28 items-center justify-center rounded-full border border-white/10 bg-slate-950/40 shadow-[0_0_40px_rgba(0,0,0,0.35)] backdrop-blur-md">
                   <span className="text-6xl drop-shadow-lg sm:text-7xl">
                     {levelEmoji}
                   </span>
@@ -146,7 +148,7 @@ export default function GokuClicker({
               </div>
             </div>
             <div className="pointer-events-none relative mt-28 flex flex-col items-center sm:mt-36">
-              <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-orange-100/90 backdrop-blur-md shadow-lg">
+              <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-orange-100/90 shadow-lg backdrop-blur-md">
                 +{formatKi(levelMultiplier)} Ki
               </span>
             </div>
@@ -166,7 +168,7 @@ export default function GokuClicker({
                   e.stopPropagation();
                   onCatchDrop?.(randomDrop);
                 }}
-                className="absolute z-30 flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-yellow-300 to-orange-500 shadow-[0_0_30px_rgba(250,204,21,0.8)] border-2 border-white cursor-pointer"
+                className="absolute z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-yellow-300 to-orange-500 shadow-[0_0_30px_rgba(250,204,21,0.8)]"
                 style={{ left: `${randomDrop.x}%`, top: `${randomDrop.y}%` }}
               >
                 <span className="text-2xl">
@@ -207,17 +209,26 @@ export default function GokuClicker({
             </span>
           </div>
           {(isDisabled || isLowEnergy) && (
-            <p
-              className={`mb-2 text-[11px] leading-4 ${isDisabled ? "text-orange-300" : "text-slate-400"}`}
-            >
-              {isDisabled
-                ? "Energy empty — wait for recharge or visit Mining for passive income."
-                : "Low energy — recharge soon or use a restore boost."}
-            </p>
+            <div className="mb-2 space-y-2">
+              <p
+                className={`text-[11px] leading-4 ${isDisabled ? "text-orange-300" : "text-slate-400"}`}
+              >
+                {isDisabled
+                  ? "Energy empty — wait for recharge or visit Mining for passive income."
+                  : "Low energy — recharge soon or use a restore boost."}
+              </p>
+              <button
+                type="button"
+                onClick={() => onOpenMining?.()}
+                className="inline-flex items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[11px] font-semibold text-orange-300 transition-colors hover:bg-orange-500/15 hover:text-orange-200"
+              >
+                Open Mining
+              </button>
+            </div>
           )}
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800 border border-white/5 shadow-inner">
+          <div className="h-2 w-full overflow-hidden rounded-full border border-white/5 bg-slate-800 shadow-inner">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-orange-600 via-orange-400 to-yellow-400 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(249,115,22,0.8)]"
+              className="h-full rounded-full bg-gradient-to-r from-orange-600 via-orange-400 to-yellow-400 shadow-[0_0_10px_rgba(249,115,22,0.8)] transition-all duration-300 ease-out"
               style={{ width: `${energyPercent}%` }}
             />
           </div>
@@ -240,7 +251,7 @@ export default function GokuClicker({
               x{formatKi(levelMultiplier)}
             </p>
           </div>
-          <div className="rounded-2xl border border-white/5 bg-slate-900/60 p-2.5 text-center backdrop-blur-md shadow-lg bg-gradient-to-t from-slate-900/60 to-transparent">
+          <div className="rounded-2xl border border-white/5 bg-gradient-to-t from-slate-900/60 to-transparent p-2.5 text-center backdrop-blur-md shadow-lg">
             <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-500">
               Status
             </p>
