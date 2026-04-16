@@ -243,15 +243,17 @@ export default function App() {
   const level = useMemo(() => getLevelByKi(totalKi), [totalKi]);
   const levelMultiplier = (level?.multiplier || 1) * prestigeMultiplier;
   const currentMultiplier = activeBoost ? activeBoost.multiplier : 1;
-  const getLocalDayStamp = () => new Date().toISOString().slice(0, 10);
+  const getLocalDayStamp = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  };
   const getLocalWeekStamp = () => {
-    const current = new Date();
-    const date = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate()));
-    const dayNum = date.getUTCDay() || 7;
-    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-    const year = date.getUTCFullYear();
-    const weekNo = Math.ceil((((date.getTime() - Date.UTC(year, 0, 1)) / 86400000) + 1) / 7);
-    return `${year}-W${String(weekNo).padStart(2, "0")}`;
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    monday.setDate(monday.getDate() + diffToMonday);
+    return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
   };
   const getQuestProgressValue = (quest: Quest) => {
     if (quest.type === "clicks") return quest.tab === "daily" ? questProgress.dailyCounters.clicks : questProgress.weeklyCounters.clicks;
@@ -290,9 +292,40 @@ export default function App() {
         }
 
         setDragonBalls(parsed.dragonBalls || 0);
-        setClaimedQuests(parsed.claimedQuests || []);
-        setClaimedQuestRewards(parsed.claimedQuestRewards || []);
-        setQuestRewardsCache(parsed.questRewardsCache || {});
+        const savedQuestProgress = parsed.questProgress || {};
+        const savedDailyCounters = savedQuestProgress.dailyCounters || {};
+        const savedWeeklyCounters = savedQuestProgress.weeklyCounters || {};
+        const savedDailyStamp = savedQuestProgress.dailyResetStamp || "";
+        const savedWeeklyStamp = savedQuestProgress.weeklyResetStamp || "";
+        const todayStamp = getLocalDayStamp();
+        const weekStamp = getLocalWeekStamp();
+        const resetDaily = savedDailyStamp !== todayStamp;
+        const resetWeekly = savedWeeklyStamp !== weekStamp;
+        const savedClaimedQuests = parsed.claimedQuests || [];
+        const resetQuestClaims = (savedClaimedQuests as string[]).filter((questId) => {
+          const questDef = QUESTS.find((quest) => quest.id === questId);
+          if (!questDef) return false;
+          if (questDef.tab === "permanent") return true;
+          if (questDef.tab === "daily") return !resetDaily;
+          if (questDef.tab === "weekly") return !resetWeekly;
+          return true;
+        });
+        const savedClaimedQuestRewards = parsed.claimedQuestRewards || [];
+        const resetQuestRewards = savedClaimedQuestRewards.filter((questId: string) => resetQuestClaims.includes(questId));
+        const savedQuestRewardsCache = parsed.questRewardsCache || {};
+        const resetQuestRewardsCache = Object.fromEntries(
+          Object.entries(savedQuestRewardsCache).filter(([questId, value]) => {
+            const questDef = QUESTS.find((quest) => quest.id === questId);
+            if (!questDef) return false;
+            if (questDef.tab === "permanent") return true;
+            if (questDef.tab === "daily") return !resetDaily && Boolean(value);
+            if (questDef.tab === "weekly") return !resetWeekly && Boolean(value);
+            return Boolean(value);
+          }),
+        );
+        setClaimedQuests(resetQuestClaims);
+        setClaimedQuestRewards(resetQuestRewards);
+        setQuestRewardsCache(resetQuestRewardsCache as Record<string, boolean>);
         setUnlockedSecretCards(parsed.unlockedSecretCards || []);
 
         const now = Date.now();
@@ -334,16 +367,6 @@ export default function App() {
             (parsed.energy || GAME_CONSTANTS.ENERGY_MAX) + recoveredEnergy,
           ),
         );
-
-        const savedQuestProgress = parsed.questProgress || {};
-        const savedDailyCounters = savedQuestProgress.dailyCounters || {};
-        const savedWeeklyCounters = savedQuestProgress.weeklyCounters || {};
-        const savedDailyStamp = savedQuestProgress.dailyResetStamp || "";
-        const savedWeeklyStamp = savedQuestProgress.weeklyResetStamp || "";
-        const todayStamp = getLocalDayStamp();
-        const weekStamp = getLocalWeekStamp();
-        const resetDaily = savedDailyStamp !== todayStamp;
-        const resetWeekly = savedWeeklyStamp !== weekStamp;
 
         setQuestProgress({
           clicks: Number(savedQuestProgress.clicks) || 0,
@@ -530,13 +553,11 @@ export default function App() {
         ...current.weeklyCounters,
         upgrades: current.weeklyCounters.upgrades + 1,
       },
+      legendaryPurchase:
+        String(card?.rarity || "").toLowerCase() === "legendary" && currentLevel === 0
+          ? current.legendaryPurchase + 1
+          : current.legendaryPurchase,
     }));
-    if (String(card?.rarity || "").toLowerCase() === "legendary") {
-      setQuestProgress((current) => ({
-        ...current,
-        legendaryPurchase: current.legendaryPurchase + 1,
-      }));
-    }
     setUserCards((current) => {
       const existingInState = current.find((item) => item.card_id === card.id);
       if (!existingInState)
