@@ -288,23 +288,6 @@ export default function App() {
   const [questProgress, setQuestProgress] = useState<QuestProgressState>(
     createFreshQuestProgress("", ""),
   );
-  const syncTotalKiProgress = (nextTotalKi: number) => {
-    const safeTotalKi = Math.max(0, nextTotalKi);
-    setTotalKi(safeTotalKi);
-    setQuestProgress((current) => ({
-      ...current,
-      totalKi: safeTotalKi,
-      level: getLevelIndexByKi(safeTotalKi),
-    }));
-  };
-  const syncQuestProgressTotalKi = (nextTotalKi: number) => {
-    const safeTotalKi = Math.max(0, nextTotalKi);
-    setQuestProgress((current) => ({
-      ...current,
-      totalKi: safeTotalKi,
-      level: getLevelIndexByKi(safeTotalKi),
-    }));
-  };
   const [permanentAchievements, setPermanentAchievements] = useState<string[]>(
     [],
   );
@@ -465,15 +448,7 @@ export default function App() {
           cappedMinutes * GAME_CONSTANTS.OFFLINE_ENERGY_PER_MINUTE,
         );
 
-        setBalanceKi((Number(parsed.balanceKi) || 0) + earnedKi);
-        syncTotalKiProgress((Number(parsed.totalKi) || 0) + earnedKi);
-        setEnergy(
-          Math.min(
-            localRestoredEnergyMax,
-            (Number(parsed.energy) || localRestoredEnergyMax) + recoveredEnergy,
-          ),
-        );
-
+        const nextBalanceKi = (Number(parsed.balanceKi) || 0) + earnedKi;
         const normalizedProgress = normalizeQuestProgress(
           parsed.questProgress,
           todayStamp,
@@ -481,7 +456,14 @@ export default function App() {
         );
         const normalizedTotalKi =
           Math.max(0, Number(parsed.totalKi) || 0) + earnedKi;
-        syncQuestProgressTotalKi(normalizedTotalKi);
+        setBalanceKi(nextBalanceKi);
+        setTotalKi(normalizedTotalKi);
+        setEnergy(
+          Math.min(
+            localRestoredEnergyMax,
+            (Number(parsed.energy) || localRestoredEnergyMax) + recoveredEnergy,
+          ),
+        );
         setQuestProgress({
           ...normalizedProgress,
           totalKi: normalizedTotalKi,
@@ -577,7 +559,15 @@ export default function App() {
 
     const passiveInterval = window.setInterval(() => {
       setBalanceKi((current) => current + passiveKiPerSecond);
-      syncTotalKiProgress(totalKi + passiveKiPerSecond);
+      setTotalKi((current) => {
+        const nextTotalKi = Math.max(0, current + passiveKiPerSecond);
+        setQuestProgress((progress) => ({
+          ...progress,
+          totalKi: nextTotalKi,
+          level: getLevelIndexByKi(nextTotalKi),
+        }));
+        return nextTotalKi;
+      });
     }, 1000);
 
     return () => window.clearInterval(passiveInterval);
@@ -624,25 +614,25 @@ export default function App() {
     if (energy < 1) return;
     const gain = levelMultiplier * currentMultiplier;
     setBalanceKi((current) => current + gain);
-    syncTotalKiProgress(totalKi + gain);
-    setEnergy((current) => Math.max(0, current - 1));
-    setQuestProgress((current) => {
-      const nextTotalKi = current.totalKi + gain;
-      return {
-        ...current,
-        clicks: current.clicks + 1,
+    setTotalKi((current) => {
+      const nextTotalKi = Math.max(0, current + gain);
+      setQuestProgress((progress) => ({
+        ...progress,
+        clicks: progress.clicks + 1,
         dailyCounters: {
-          ...current.dailyCounters,
-          clicks: current.dailyCounters.clicks + 1,
+          ...progress.dailyCounters,
+          clicks: progress.dailyCounters.clicks + 1,
         },
         weeklyCounters: {
-          ...current.weeklyCounters,
-          clicks: current.weeklyCounters.clicks + 1,
+          ...progress.weeklyCounters,
+          clicks: progress.weeklyCounters.clicks + 1,
         },
         totalKi: nextTotalKi,
         level: getLevelIndexByKi(nextTotalKi),
-      };
+      }));
+      return nextTotalKi;
     });
+    setEnergy((current) => Math.max(0, current - 1));
   };
 
   const handlePurchaseCard = (card: GameCard) => {
@@ -709,7 +699,15 @@ export default function App() {
     if (drop.type === "ki") {
       const reward = levelMultiplier * 50;
       setBalanceKi((b) => b + reward);
-      syncTotalKiProgress(totalKi + reward);
+      setTotalKi((current) => {
+        const nextTotalKi = Math.max(0, current + reward);
+        setQuestProgress((progress) => ({
+          ...progress,
+          totalKi: nextTotalKi,
+          level: getLevelIndexByKi(nextTotalKi),
+        }));
+        return nextTotalKi;
+      });
     } else if (drop.type === "energy") {
       setEnergy((e) => Math.min(restoredEnergyMax, e + 50));
     } else if (drop.type === "boost") {
@@ -724,7 +722,15 @@ export default function App() {
   const handleClaimQuest = (quest: Quest) => {
     if (claimedQuests.includes(quest.id)) return;
     setBalanceKi((b) => b + quest.reward.ki);
-    syncTotalKiProgress(totalKi + quest.reward.ki);
+    setTotalKi((current) => {
+      const nextTotalKi = Math.max(0, current + quest.reward.ki);
+      setQuestProgress((progress) => ({
+        ...progress,
+        totalKi: nextTotalKi,
+        level: getLevelIndexByKi(nextTotalKi),
+      }));
+      return nextTotalKi;
+    });
     const rewardEnergy = quest.reward.energy;
     if (typeof rewardEnergy === "number") {
       setEnergy((e) => Math.min(restoredEnergyMax, e + rewardEnergy));
@@ -747,7 +753,7 @@ export default function App() {
   const confirmPrestige = () => {
     setDragonBalls((d) => d + 1);
     setBalanceKi(0);
-    syncTotalKiProgress(0);
+    setTotalKi(0);
     setEnergy(GAME_CONSTANTS.ENERGY_MAX);
     setUserCards([]);
     setActiveBoost(null);
