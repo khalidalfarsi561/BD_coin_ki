@@ -307,6 +307,7 @@ export default function App() {
     expiresAt: number;
   } | null>(null);
   const [offlineKiEarned, setOfflineKiEarned] = useState(0);
+  const [offlineEnergyRecovered, setOfflineEnergyRecovered] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [dragonBalls, setDragonBalls] = useState(0);
   const [randomDrop, setRandomDrop] = useState<RandomDrop | null>(null);
@@ -322,6 +323,7 @@ export default function App() {
   const level = useMemo(() => getLevelByKi(totalKi), [totalKi]);
   const levelMultiplier = (level?.multiplier || 1) * prestigeMultiplier;
   const currentMultiplier = activeBoost ? activeBoost.multiplier : 1;
+  const tapKiGain = levelMultiplier * currentMultiplier;
   const getLocalDayStamp = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -447,6 +449,7 @@ export default function App() {
         const recoveredEnergy = Math.floor(
           cappedMinutes * GAME_CONSTANTS.OFFLINE_ENERGY_PER_MINUTE,
         );
+        setOfflineEnergyRecovered(recoveredEnergy);
 
         const nextBalanceKi = (Number(parsed.balanceKi) || 0) + earnedKi;
         const normalizedProgress = normalizeQuestProgress(
@@ -622,7 +625,7 @@ export default function App() {
 
   const handleClickKi = () => {
     if (energy < 1) return;
-    const gain = levelMultiplier * currentMultiplier;
+    const gain = tapKiGain;
     setBalanceKi((current) => current + gain);
     setTotalKi((current) => {
       const nextTotalKi = Math.max(0, current + gain);
@@ -793,6 +796,7 @@ export default function App() {
             totalKi={totalKi}
             levelName={level.name}
             levelMultiplier={levelMultiplier}
+            actualTapGain={tapKiGain}
             levelEmoji={level?.emoji}
             levelAura={level?.aura}
             levelImage={undefined}
@@ -860,14 +864,22 @@ export default function App() {
                     <div className="space-y-2">
                       {permanentAchievements
                         .filter((item) => item.startsWith("Secret Card:"))
-                        .map((item) => (
-                          <div
-                            key={item}
-                            className="rounded-2xl border border-cyan-400/10 bg-slate-950/40 px-4 py-3 text-sm text-cyan-100"
-                          >
-                            {item}
-                          </div>
-                        ))}
+                        .map((item) => {
+                          const label = item.replace("Secret Card:", "").trim();
+                          return (
+                            <div
+                              key={item}
+                              className="rounded-2xl border border-cyan-300/20 bg-slate-950/50 px-4 py-3 shadow-[0_0_18px_rgba(34,211,238,0.08)]"
+                            >
+                              <div className="mb-1 inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.22em] text-cyan-300">
+                                Secret Reward
+                              </div>
+                              <p className="text-sm font-semibold text-cyan-100">
+                                {label}
+                              </p>
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
                 )}
@@ -1013,8 +1025,8 @@ export default function App() {
               </h3>
               <p className="mb-4 text-xs text-slate-300">
                 Rebirth resets your Ki, Energy, cards, boosts, and run-based
-                quest progress. You keep Dragon Balls and permanent
-                achievements.
+                quest progress. You keep Dragon Balls, permanent achievements,
+                and secret unlock records.
               </p>
               <div className="mb-4 flex items-center justify-center gap-2">
                 <DragonBallIcon
@@ -1037,7 +1049,7 @@ export default function App() {
                 </div>
               </div>
               <p className="mb-4 text-[10px] text-slate-400">
-                Current prestige bonus: x{prestigeMultiplier.toFixed(1)} Ki gain
+                Current prestige bonus: x{prestigeMultiplier.toFixed(1)} to tap and passive Ki gain
               </p>
               <button
                 onClick={handlePrestige}
@@ -1128,10 +1140,15 @@ export default function App() {
                   </span>{" "}
                   while away.
                 </p>
-                <p className="mt-1 text-[11px] text-orange-100/80">
-                  Energy was also recovered during your absence, capped by the
-                  offline limit.
-                </p>
+                {offlineEnergyRecovered > 0 && (
+                  <p className="mt-1 text-[11px] text-orange-100/80">
+                    Recovered{" "}
+                    <span className="font-bold text-orange-300">
+                      {offlineEnergyRecovered} Energy
+                    </span>{" "}
+                    during your absence, up to the offline cap.
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -1185,7 +1202,7 @@ export default function App() {
                 >
                   Rebirth resets your Ki, Energy, cards, boosts, and non-permanent
                   quest progress. You keep Dragon Balls, permanent achievements,
-                  and unlocked secret cards.
+                  and secret unlock records.
                 </p>
               </div>
             </div>
@@ -1207,7 +1224,7 @@ export default function App() {
               <div className="mt-2 space-y-1.5 text-sm text-slate-200">
                 <p>You keep Dragon Balls.</p>
                 <p>You keep permanent achievements.</p>
-                <p>You keep unlocked secret cards.</p>
+                <p>You keep secret unlock records.</p>
               </div>
             </div>
 

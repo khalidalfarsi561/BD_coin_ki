@@ -20,6 +20,7 @@ interface GokuClickerProps {
   totalKi?: number;
   levelName?: string;
   levelMultiplier?: number;
+  actualTapGain?: number;
   levelEmoji?: string;
   levelAura?: string;
   levelImage?: string;
@@ -43,6 +44,7 @@ export default function GokuClicker({
   totalKi = 0,
   levelName = "Earthling",
   levelMultiplier = 1,
+  actualTapGain,
   levelEmoji = "🧑",
   levelAura = "shadow-white/10",
   levelImage,
@@ -65,7 +67,7 @@ export default function GokuClicker({
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       if (!onClickKi) return;
-      const kiGain = levelMultiplier;
+      const kiGain = actualTapGain ?? levelMultiplier;
       const rect = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
@@ -86,7 +88,7 @@ export default function GokuClicker({
         setFloaters((current) => current.slice(1));
       }, 900);
     },
-    [levelMultiplier, onClickKi],
+    [actualTapGain, levelMultiplier, onClickKi],
   );
 
   const isDisabled = energy <= 0;
@@ -149,7 +151,7 @@ export default function GokuClicker({
             </div>
             <div className="pointer-events-none relative mt-28 flex flex-col items-center sm:mt-36">
               <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-orange-100/90 shadow-lg backdrop-blur-md">
-                +{formatKi(levelMultiplier)} Ki
+                +{formatKi(actualTapGain ?? levelMultiplier)} Ki
               </span>
             </div>
           </button>
@@ -169,7 +171,10 @@ export default function GokuClicker({
                   onCatchDrop?.(randomDrop);
                 }}
                 className="absolute z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-yellow-300 to-orange-500 shadow-[0_0_30px_rgba(250,204,21,0.8)]"
-                style={{ left: `${randomDrop.x}%`, top: `${randomDrop.y}%` }}
+                style={{
+                  left: `${Math.max(6, Math.min(84, randomDrop.x))}%`,
+                  top: `${Math.max(10, Math.min(82, randomDrop.y))}%`,
+                }}
               >
                 <span className="text-2xl">
                   {randomDrop.type === "energy"
@@ -214,8 +219,8 @@ export default function GokuClicker({
                 className={`text-[11px] leading-4 ${isDisabled ? "text-orange-300" : "text-slate-400"}`}
               >
                 {isDisabled
-                  ? "Energy empty — wait for recharge or visit Mining for passive income."
-                  : "Low energy — recharge soon or use a restore boost."}
+                  ? "Energy empty — wait for recharge, rely on passive income, or visit Mining."
+                  : "Low energy — recharge soon, or visit Mining before taps slow down."}
               </p>
               <button
                 type="button"
