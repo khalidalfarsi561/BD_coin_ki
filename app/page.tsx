@@ -293,7 +293,9 @@ export default function App() {
   );
   const [claimedQuests, setClaimedQuests] = useState<string[]>([]);
   const [claimedQuestRewards, setClaimedQuestRewards] = useState<string[]>([]);
-  const [questRewardsCache, setQuestRewardsCache] = useState<Record<string, boolean>>({});
+  const [questRewardsCache, setQuestRewardsCache] = useState<
+    Record<string, boolean>
+  >({});
   const [showOfflinePopup, setShowOfflinePopup] = useState(false);
   const [balanceKi, setBalanceKi] = useState<number>(0);
   const [totalKi, setTotalKi] = useState<number>(0);
@@ -310,15 +312,11 @@ export default function App() {
   const [randomDrop, setRandomDrop] = useState<RandomDrop | null>(null);
   const [showPrestigeModal, setShowPrestigeModal] = useState(false);
 
-  const maxEnergyBonus = useMemo(() => {
+  const restoredEnergyMax = useMemo(() => {
     const energyCard = userCards.find((c) => c.card_id === "card-3");
-    return energyCard ? energyCard.current_level * 10 : 0;
+    return GAME_CONSTANTS.ENERGY_MAX + (energyCard?.current_level || 0) * 10;
   }, [userCards]);
 
-  const restoredEnergyMax = useMemo(
-    () => GAME_CONSTANTS.ENERGY_MAX + maxEnergyBonus,
-    [maxEnergyBonus],
-  );
   const prestigeMultiplier = 1 + dragonBalls * 0.5;
 
   const level = useMemo(() => getLevelByKi(totalKi), [totalKi]);
@@ -373,6 +371,10 @@ export default function App() {
       try {
         const parsed: SavedGameState = JSON.parse(savedState);
         const savedCards = parsed.userCards || [];
+        const localRestoredEnergyMax =
+          GAME_CONSTANTS.ENERGY_MAX +
+          (savedCards.find((c) => c.card_id === "card-3")?.current_level || 0) *
+            10;
         setUserCards(savedCards);
 
         const savedBoost = parsed.activeBoost;
@@ -450,9 +452,8 @@ export default function App() {
         setTotalKi((Number(parsed.totalKi) || 0) + earnedKi);
         setEnergy(
           Math.min(
-            restoredEnergyMax,
-            (Number(parsed.energy) || GAME_CONSTANTS.ENERGY_MAX) +
-              recoveredEnergy,
+            localRestoredEnergyMax,
+            (Number(parsed.energy) || localRestoredEnergyMax) + recoveredEnergy,
           ),
         );
 
@@ -499,7 +500,7 @@ export default function App() {
       setQuestProgress(createFreshQuestProgress(todayStamp, weekStamp));
     }
     setIsLoaded(true);
-  }, [restoredEnergyMax]);
+  }, []);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -820,7 +821,7 @@ export default function App() {
               </div>
 
               <div className="space-y-4">
-                {permanentAchievements.some((item) => item.startsWith("Secret Card:")) && (
+                {permanentAchievements.length > 0 && (
                   <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-4 backdrop-blur-md">
                     <h4 className="mb-3 text-sm font-black uppercase tracking-[0.2em] text-cyan-300">
                       Secret Unlocks
@@ -839,27 +840,6 @@ export default function App() {
                             {item}
                           </div>
                         ))}
-                    </div>
-                  </div>
-                )}
-
-                {permanentAchievements.length > 0 && (
-                  <div className="rounded-3xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4 backdrop-blur-md">
-                    <h4 className="mb-3 text-sm font-black uppercase tracking-[0.2em] text-fuchsia-300">
-                      Permanent Achievements
-                    </h4>
-                    <p className="mb-3 text-[11px] text-fuchsia-100/75">
-                      Unlocked across all rebirths.
-                    </p>
-                    <div className="space-y-2">
-                      {permanentAchievements.map((item) => (
-                        <div
-                          key={item}
-                          className="rounded-2xl border border-fuchsia-400/10 bg-slate-950/40 px-4 py-3 text-sm text-fuchsia-100"
-                        >
-                          {item}
-                        </div>
-                      ))}
                     </div>
                   </div>
                 )}
@@ -1180,12 +1160,23 @@ export default function App() {
 
             <div className="mb-5 rounded-2xl border border-white/5 bg-white/5 p-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                What changes
+              </p>
+              <div className="mt-2 space-y-1.5 text-sm text-slate-200">
+                <p>You will lose Ki.</p>
+                <p>You will lose Energy.</p>
+                <p>You will lose cards.</p>
+                <p>You will lose active boosts.</p>
+                <p>Non-permanent quest progress resets.</p>
+              </div>
+              <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-orange-400">
                 What you keep
               </p>
-              <p className="mt-2 text-sm text-slate-200">
-                Dragon Balls, permanent achievements, and quest unlocks remain
-                safe.
-              </p>
+              <div className="mt-2 space-y-1.5 text-sm text-slate-200">
+                <p>You keep Dragon Balls.</p>
+                <p>You keep permanent achievements.</p>
+                <p>You keep unlocked secret cards.</p>
+              </div>
             </div>
 
             <div className="flex gap-3">

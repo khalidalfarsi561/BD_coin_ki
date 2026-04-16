@@ -532,11 +532,11 @@ export default function MiningStore({
 
                   {isActive && activeTimedBoostRemaining ? (
                     <p className="mt-2 text-[10px] font-medium leading-4 text-emerald-300">
-                      Ends in {activeTimedBoostRemaining}
+                      Boost Active {activeTimedBoostRemaining}
                     </p>
                   ) : isLockedByTimedBoost && disabledReason ? (
                     <p className="mt-2 text-[10px] font-medium leading-4 text-slate-400">
-                      {disabledReason}
+                      {disabledReason.replace("Active boost:", "Boost Active")}
                     </p>
                   ) : null}
 
@@ -564,7 +564,7 @@ export default function MiningStore({
                       {isActive
                         ? "Active"
                         : isLockedByTimedBoost
-                          ? `Wait ${activeTimedBoostRemaining}`
+                          ? `Boost Active ${activeTimedBoostRemaining}`
                           : !canAfford
                             ? "Locked"
                             : "Buy"}
