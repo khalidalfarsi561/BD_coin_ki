@@ -481,7 +481,7 @@ export default function App() {
           weeklyResetStamp: weekStamp,
         });
 
-        if (earnedKi > 0) {
+        if (earnedKi > 0 || recoveredEnergy > 0) {
           setOfflineKiEarned(earnedKi);
           setShowOfflinePopup(true);
         }
