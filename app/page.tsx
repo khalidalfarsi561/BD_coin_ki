@@ -281,10 +281,12 @@ export default function App() {
   const [permanentAchievements, setPermanentAchievements] = useState<string[]>(
     [],
   );
+  // Persisted claim ids for quests that were completed in the current cycle.
+  const [claimedQuests, setClaimedQuests] = useState<string[]>([]);
+  // Tracks which reward grants were already processed so reloads don't double-apply them.
   const [claimedQuestRewards, setClaimedQuestRewards] = useState<string[]>([]);
-  const [questRewardsCache, setQuestRewardsCache] = useState<
-    Record<string, boolean>
-  >({});
+  // Caches quest reward unlock state for stable UI restoration across reloads.
+  const [questRewardsCache, setQuestRewardsCache] = useState<Record<string, boolean>>({});
   const [showOfflinePopup, setShowOfflinePopup] = useState(false);
   const [balanceKi, setBalanceKi] = useState<number>(0);
   const [totalKi, setTotalKi] = useState<number>(0);
@@ -298,7 +300,6 @@ export default function App() {
   const [offlineKiEarned, setOfflineKiEarned] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [dragonBalls, setDragonBalls] = useState(0);
-  const [claimedQuests, setClaimedQuests] = useState<string[]>([]);
   const [randomDrop, setRandomDrop] = useState<RandomDrop | null>(null);
 
   const maxEnergyBonus = useMemo(() => {
@@ -702,7 +703,7 @@ export default function App() {
     if (totalKi < GAME_CONSTANTS.PRESTIGE_REQ_KI) return;
     if (
       window.confirm(
-        "Rebirth resets your Ki, Energy, cards, boosts, and non-permanent quest progress. You keep your Dragon Balls, permanent achievements, and any unlocked secret cards.",
+        "Rebirth resets your Ki, Energy, cards, boosts, and run-based quest progress. You keep your Dragon Balls and permanent achievements.",
       )
     ) {
       setDragonBalls((d) => d + 1);
@@ -792,20 +793,25 @@ export default function App() {
               </div>
 
               <div className="space-y-4">
-                {permanentAchievements.length > 0 && (
+                {permanentAchievements.some((item) => item.startsWith("Secret Card:")) && (
                   <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-4 backdrop-blur-md">
                     <h4 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-300 mb-3">
                       Secret Unlocks
                     </h4>
+                    <p className="mb-3 text-[11px] text-cyan-100/70">
+                      Unlock-type rewards earned from quests.
+                    </p>
                     <div className="space-y-2">
-                      {permanentAchievements.map((item) => (
-                        <div
-                          key={item}
-                          className="rounded-2xl border border-cyan-400/10 bg-slate-950/40 px-4 py-3 text-sm text-cyan-100"
-                        >
-                          {item}
-                        </div>
-                      ))}
+                      {permanentAchievements
+                        .filter((item) => item.startsWith("Secret Card:"))
+                        .map((item) => (
+                          <div
+                            key={item}
+                            className="rounded-2xl border border-cyan-400/10 bg-slate-950/40 px-4 py-3 text-sm text-cyan-100"
+                          >
+                            {item}
+                          </div>
+                        ))}
                     </div>
                   </div>
                 )}
@@ -815,6 +821,9 @@ export default function App() {
                     <h4 className="text-sm font-black uppercase tracking-[0.2em] text-fuchsia-300 mb-3">
                       Permanent Achievements
                     </h4>
+                    <p className="mb-3 text-[11px] text-fuchsia-100/70">
+                      Unlocked across all rebirths.
+                    </p>
                     <div className="space-y-2">
                       {permanentAchievements.map((item) => (
                         <div
@@ -968,9 +977,9 @@ export default function App() {
                 Rebirth (Prestige)
               </h3>
               <p className="text-xs text-slate-300 mb-4">
-                Rebirth resets your Ki, Energy, cards, boosts, and non-permanent
-                quest progress. You keep Dragon Balls, permanent achievements,
-                and unlocked secret cards.
+                Rebirth resets your Ki, Energy, cards, boosts, and run-based
+                quest progress. You keep Dragon Balls and permanent
+                achievements.
               </p>
               <div className="flex justify-center items-center gap-2 mb-4">
                 <DragonBallIcon
