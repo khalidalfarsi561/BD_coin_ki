@@ -10,6 +10,7 @@ import {
   COLLECTIONS,
   LEVEL_THRESHOLDS,
   getLevelByKi,
+  getLevelIndexByKi,
   GAME_CONSTANTS,
 } from "@/lib/gameConstants";
 
@@ -194,11 +195,19 @@ const QUESTS: Quest[] = [
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [questTab, setQuestTab] = useState<QuestTab>("daily");
-  const [questProgress, setQuestProgress] = useState({ legendaryPurchases: 0 });
+  const [questProgress, setQuestProgress] = useState({
+    clicks: 0,
+    upgrades: 0,
+    totalKi: 0,
+    level: 0,
+    legendaryPurchase: 0,
+    dailyResetStamp: "",
+    weeklyResetStamp: "",
+    dailyCounters: { clicks: 0, upgrades: 0 },
+    weeklyCounters: { clicks: 0, upgrades: 0 },
+  });
   const [unlockedSecretCards, setUnlockedSecretCards] = useState<string[]>([]);
   const [claimedQuestRewards, setClaimedQuestRewards] = useState<string[]>([]);
-  const [questResetStamp, setQuestResetStamp] = useState<string>("");
-  const [weeklyQuestStamp, setWeeklyQuestStamp] = useState<string>("");
   const [questRewardsCache, setQuestRewardsCache] = useState<
     Record<string, boolean>
   >({});
@@ -215,7 +224,6 @@ export default function App() {
   const [offlineKiEarned, setOfflineKiEarned] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [dragonBalls, setDragonBalls] = useState(0);
-  const [stats, setStats] = useState({ clicks: 0, upgrades: 0 });
   const [claimedQuests, setClaimedQuests] = useState<string[]>([]);
   const [randomDrop, setRandomDrop] = useState<{
     id: string;
@@ -235,6 +243,25 @@ export default function App() {
   const level = useMemo(() => getLevelByKi(totalKi), [totalKi]);
   const levelMultiplier = (level?.multiplier || 1) * prestigeMultiplier;
   const currentMultiplier = activeBoost ? activeBoost.multiplier : 1;
+  const getLocalDayStamp = () => new Date().toISOString().slice(0, 10);
+  const getLocalWeekStamp = () => {
+    const current = new Date();
+    const date = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const year = date.getUTCFullYear();
+    const weekNo = Math.ceil((((date.getTime() - Date.UTC(year, 0, 1)) / 86400000) + 1) / 7);
+    return `${year}-W${String(weekNo).padStart(2, "0")}`;
+  };
+  const getQuestProgressValue = (quest: Quest) => {
+    if (quest.type === "clicks") return quest.tab === "daily" ? questProgress.dailyCounters.clicks : questProgress.weeklyCounters.clicks;
+    if (quest.type === "upgrades") return quest.tab === "daily" ? questProgress.dailyCounters.upgrades : questProgress.weeklyCounters.upgrades;
+    if (quest.type === "totalKi") return totalKi;
+    if (quest.type === "level") return getLevelIndexByKi(totalKi);
+    if (quest.type === "legendaryPurchase") return questProgress.legendaryPurchase;
+    return 0;
+  };
+
   const passiveKiPerSecond = useMemo(
     () =>
       userCards.reduce((total: number, ownedCard: any) => {
@@ -263,10 +290,10 @@ export default function App() {
         }
 
         setDragonBalls(parsed.dragonBalls || 0);
-        setStats(parsed.stats || { clicks: 0, upgrades: 0 });
         setClaimedQuests(parsed.claimedQuests || []);
         setClaimedQuestRewards(parsed.claimedQuestRewards || []);
         setQuestRewardsCache(parsed.questRewardsCache || {});
+        setUnlockedSecretCards(parsed.unlockedSecretCards || []);
 
         const now = Date.now();
         const lastActive = parsed.lastActive || now;
@@ -308,6 +335,38 @@ export default function App() {
           ),
         );
 
+        const savedQuestProgress = parsed.questProgress || {};
+        const savedDailyCounters = savedQuestProgress.dailyCounters || {};
+        const savedWeeklyCounters = savedQuestProgress.weeklyCounters || {};
+        const savedDailyStamp = savedQuestProgress.dailyResetStamp || "";
+        const savedWeeklyStamp = savedQuestProgress.weeklyResetStamp || "";
+        const todayStamp = getLocalDayStamp();
+        const weekStamp = getLocalWeekStamp();
+        const resetDaily = savedDailyStamp !== todayStamp;
+        const resetWeekly = savedWeeklyStamp !== weekStamp;
+
+        setQuestProgress({
+          clicks: Number(savedQuestProgress.clicks) || 0,
+          upgrades: Number(savedQuestProgress.upgrades) || 0,
+          totalKi: Number(savedQuestProgress.totalKi) || (parsed.totalKi || 0),
+          level: getLevelIndexByKi(Number(savedQuestProgress.totalKi) || parsed.totalKi || 0),
+          legendaryPurchase: Number(savedQuestProgress.legendaryPurchase) || 0,
+          dailyResetStamp: todayStamp,
+          weeklyResetStamp: weekStamp,
+          dailyCounters: resetDaily
+            ? { clicks: 0, upgrades: 0 }
+            : {
+                clicks: Number(savedDailyCounters.clicks) || 0,
+                upgrades: Number(savedDailyCounters.upgrades) || 0,
+              },
+          weeklyCounters: resetWeekly
+            ? { clicks: 0, upgrades: 0 }
+            : {
+                clicks: Number(savedWeeklyCounters.clicks) || 0,
+                upgrades: Number(savedWeeklyCounters.upgrades) || 0,
+              },
+        });
+
         if (earnedKi > 0) {
           setOfflineKiEarned(earnedKi);
           setShowOfflinePopup(true);
@@ -320,6 +379,19 @@ export default function App() {
     } else {
       setBalanceKi(1000);
       setTotalKi(2500);
+      const todayStamp = getLocalDayStamp();
+      const weekStamp = getLocalWeekStamp();
+      setQuestProgress({
+        clicks: 0,
+        upgrades: 0,
+        totalKi: 2500,
+        level: getLevelIndexByKi(2500),
+        legendaryPurchase: 0,
+        dailyResetStamp: todayStamp,
+        weeklyResetStamp: weekStamp,
+        dailyCounters: { clicks: 0, upgrades: 0 },
+        weeklyCounters: { clicks: 0, upgrades: 0 },
+      });
     }
     setIsLoaded(true);
   }, []);
@@ -333,10 +405,11 @@ export default function App() {
       userCards,
       activeBoost,
       dragonBalls,
-      stats,
       claimedQuests,
       claimedQuestRewards,
       questRewardsCache,
+      questProgress,
+      unlockedSecretCards,
       lastActive: Date.now(),
     };
     localStorage.setItem("dragonBallKiState", JSON.stringify(stateToSave));
@@ -347,8 +420,11 @@ export default function App() {
     userCards,
     activeBoost,
     dragonBalls,
-    stats,
     claimedQuests,
+    claimedQuestRewards,
+    questRewardsCache,
+    questProgress,
+    unlockedSecretCards,
     isLoaded,
   ]);
 
@@ -412,7 +488,23 @@ export default function App() {
     setBalanceKi((current) => current + gain);
     setTotalKi((current) => current + gain);
     setEnergy((current) => Math.max(0, current - 1));
-    setStats((s) => ({ ...s, clicks: s.clicks + 1 }));
+    setQuestProgress((current) => {
+      const nextTotalKi = current.totalKi + gain;
+      return {
+        ...current,
+        clicks: current.clicks + 1,
+        dailyCounters: {
+          ...current.dailyCounters,
+          clicks: current.dailyCounters.clicks + 1,
+        },
+        weeklyCounters: {
+          ...current.weeklyCounters,
+          clicks: current.weeklyCounters.clicks + 1,
+        },
+        totalKi: nextTotalKi,
+        level: getLevelIndexByKi(nextTotalKi),
+      };
+    });
   };
 
   const handlePurchaseCard = (card: any) => {
@@ -424,10 +516,27 @@ export default function App() {
         ? Math.floor(baseCost * Math.pow(1.5, currentLevel))
         : baseCost;
 
-    if (balanceKi < cost) return;
+    if (balanceKi < cost) return false;
 
     setBalanceKi((current) => current - cost);
-    setStats((s) => ({ ...s, upgrades: s.upgrades + 1 }));
+    setQuestProgress((current) => ({
+      ...current,
+      upgrades: current.upgrades + 1,
+      dailyCounters: {
+        ...current.dailyCounters,
+        upgrades: current.dailyCounters.upgrades + 1,
+      },
+      weeklyCounters: {
+        ...current.weeklyCounters,
+        upgrades: current.weeklyCounters.upgrades + 1,
+      },
+    }));
+    if (String(card?.rarity || "").toLowerCase() === "legendary") {
+      setQuestProgress((current) => ({
+        ...current,
+        legendaryPurchase: current.legendaryPurchase + 1,
+      }));
+    }
     setUserCards((current) => {
       const existingInState = current.find((item) => item.card_id === card.id);
       if (!existingInState)
@@ -438,6 +547,7 @@ export default function App() {
           : item,
       );
     });
+    return true;
   };
 
   const handlePurchaseBoost = (boost: any) => {
@@ -462,6 +572,10 @@ export default function App() {
       const reward = levelMultiplier * 50;
       setBalanceKi((b) => b + reward);
       setTotalKi((t) => t + reward);
+      setQuestProgress((current) => ({
+        ...current,
+        totalKi: current.totalKi + reward,
+      }));
     } else if (drop.type === "energy") {
       setEnergy((e) => Math.min(energyMax, e + 50));
     } else if (drop.type === "boost") {
@@ -502,13 +616,21 @@ export default function App() {
       setEnergy(GAME_CONSTANTS.ENERGY_MAX);
       setUserCards([]);
       setActiveBoost(null);
-      setStats({ clicks: 0, upgrades: 0 });
       setClaimedQuests([]);
+      setQuestProgress((current) => ({
+        ...current,
+        clicks: 0,
+        upgrades: 0,
+        totalKi: 0,
+        legendaryPurchase: 0,
+        dailyCounters: { clicks: 0, upgrades: 0 },
+        weeklyCounters: { clicks: 0, upgrades: 0 },
+      }));
     }
   };
 
   const renderTabContent = () => {
-    if (activeTab === "home" || activeTab === "mining") {
+    if (activeTab === "home") {
       return (
         <div className="flex w-full flex-1 items-center justify-center">
           <GokuClicker
@@ -525,6 +647,22 @@ export default function App() {
             onClickKi={handleClickKi}
             randomDrop={randomDrop}
             onCatchDrop={handleCatchDrop}
+          />
+        </div>
+      );
+    }
+
+    if (activeTab === "mining") {
+      return (
+        <div className="flex w-full flex-1 items-center justify-center">
+          <MiningStore
+            cards={demoCards}
+            userCards={userCards}
+            balanceKi={balanceKi}
+            onPurchaseCard={handlePurchaseCard}
+            boosts={demoBoosts}
+            activeBoost={activeBoost}
+            onPurchaseBoost={handlePurchaseBoost}
           />
         </div>
       );
@@ -557,6 +695,24 @@ export default function App() {
               </div>
 
               <div className="space-y-4">
+                {unlockedSecretCards.length > 0 && (
+                  <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-4 backdrop-blur-md">
+                    <h4 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-300 mb-3">
+                      Secret Unlocks
+                    </h4>
+                    <div className="space-y-2">
+                      {unlockedSecretCards.map((item) => (
+                        <div
+                          key={item}
+                          className="rounded-2xl border border-cyan-400/10 bg-slate-950/40 px-4 py-3 text-sm text-cyan-100"
+                        >
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {filteredQuests.length === 0 && (
                   <div className="text-center text-slate-500 text-xs py-8">
                     No quests available in this category.
@@ -567,10 +723,7 @@ export default function App() {
                   const rewardKi = quest.reward.ki;
                   const rewardEnergy = quest.reward.energy;
                   const unlock = quest.reward.unlock;
-                  let progress = 0;
-                  if (quest.type === "clicks") progress = stats.clicks;
-                  if (quest.type === "upgrades") progress = stats.upgrades;
-                  if (quest.type === "totalKi") progress = totalKi;
+                  const progress = getQuestProgressValue(quest);
 
                   const isCompleted = progress >= quest.target;
                   const percent = Math.max(
@@ -628,6 +781,12 @@ export default function App() {
                           {formatKi(quest.target)}
                         </span>
                       </div>
+
+                      {quest.reward.unlock && (
+                        <div className="mt-4 text-[10px] font-bold uppercase tracking-widest text-cyan-300/90">
+                          Secret Unlock: {quest.reward.unlock}
+                        </div>
+                      )}
 
                       {isCompleted && !isClaimed && (
                         <button
@@ -735,6 +894,7 @@ export default function App() {
                   : `Need ${formatKi(GAME_CONSTANTS.PRESTIGE_REQ_KI)} Total Ki`}
               </button>
             </div>
+
           </div>
         </div>
       );
@@ -742,20 +902,14 @@ export default function App() {
 
     return (
       <div className="flex w-full flex-1 items-center justify-center">
-        <GokuClicker
+        <MiningStore
+          cards={demoCards}
+          userCards={userCards}
           balanceKi={balanceKi}
-          energy={energy}
-          energyMax={energyMax}
-          totalKi={totalKi}
-          levelName={level.name}
-          levelMultiplier={levelMultiplier}
-          levelEmoji={level?.emoji}
-          levelAura={level?.aura}
-          levelImage={level?.image}
-          dragonBalls={dragonBalls}
-          onClickKi={handleClickKi}
-          randomDrop={randomDrop}
-          onCatchDrop={handleCatchDrop}
+          onPurchaseCard={handlePurchaseCard}
+          boosts={demoBoosts}
+          activeBoost={activeBoost}
+          onPurchaseBoost={handlePurchaseBoost}
         />
       </div>
     );
@@ -797,7 +951,7 @@ export default function App() {
             </header>
           )}
 
-          {showOfflinePopup && activeTab !== "home" && (
+          {showOfflinePopup && (
             <div className="animate-in fade-in slide-in-from-top-4 flex items-center justify-between rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 backdrop-blur-sm">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-orange-400">
@@ -826,19 +980,6 @@ export default function App() {
           </div>
         </div>
 
-        {activeTab === "mining" && (
-          <div className="hidden w-full lg:block lg:w-1/2">
-            <MiningStore
-              cards={demoCards}
-              userCards={userCards}
-              balanceKi={balanceKi}
-              onPurchaseCard={handlePurchaseCard}
-              boosts={demoBoosts}
-              activeBoost={activeBoost}
-              onPurchaseBoost={handlePurchaseBoost}
-            />
-          </div>
-        )}
       </div>
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />

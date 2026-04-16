@@ -48,3 +48,16 @@ export const getNextLevel = (currentLevelId: string) => {
 };
 
 export const getLevelMultiplierByKi = (totalKi: number = 0) => getLevelByKi(totalKi).multiplier;
+
+export const getLevelIndexByKi = (totalKi: number = 0) => {
+  const ki = Number(totalKi) || 0;
+  let levelIndex = 1;
+
+  for (let index = 0; index < LEVEL_THRESHOLDS.length; index += 1) {
+    if (ki >= LEVEL_THRESHOLDS[index].minKiRequired) {
+      levelIndex = index + 1;
+    }
+  }
+
+  return levelIndex;
+};

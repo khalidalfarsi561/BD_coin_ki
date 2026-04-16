@@ -71,7 +71,7 @@ interface MiningStoreProps {
   cards?: any[];
   userCards?: any[];
   balanceKi?: number;
-  onPurchaseCard?: (card: any) => void;
+  onPurchaseCard?: (card: any) => boolean;
   loadingText?: string;
   boosts?: any[];
   activeBoost?: any;
@@ -94,7 +94,8 @@ export default function MiningStore({
   const [justUpgraded, setJustUpgraded] = useState<string | null>(null);
 
   const handlePurchaseClick = (card: any) => {
-    onPurchaseCard?.(card);
+    const didPurchase = onPurchaseCard?.(card) ?? false;
+    if (!didPurchase) return;
     setJustUpgraded(card.id);
     setTimeout(() => setJustUpgraded(null), 2000);
   };
@@ -146,7 +147,6 @@ export default function MiningStore({
         <div>
           <h3 className="text-lg font-bold text-white tracking-tight">Mining Store</h3>
           <p className="text-xs text-slate-400">Passive income generators</p>
-      <p className="text-xs text-slate-400">Passive income generators</p>
         </div>
         <div className="text-right">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Balance</p>

@@ -79,6 +79,7 @@ export default function GokuClicker({
   );
 
   const isDisabled = energy <= 0;
+  const isLowEnergy = energy > 0 && energy <= Math.max(10, energyMax * 0.1);
 
   return (
     <section className="relative flex h-full w-full flex-col items-center justify-between overflow-hidden px-4 pb-6 pt-3 sm:px-6 sm:pb-8 sm:pt-4">
@@ -171,6 +172,11 @@ export default function GokuClicker({
             <span>Energy</span>
             <span className="text-orange-400">{Math.floor(energy)} / {energyMax}</span>
           </div>
+          {(isDisabled || isLowEnergy) && (
+            <p className={`mb-2 text-[11px] leading-4 ${isDisabled ? 'text-orange-300' : 'text-slate-400'}`}>
+              {isDisabled ? 'Energy empty — wait for recharge or visit Mining for passive income.' : 'Low energy — recharge soon or use a restore boost.'}
+            </p>
+          )}
           <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800 border border-white/5 shadow-inner">
             <div
               className="h-full rounded-full bg-gradient-to-r from-orange-600 via-orange-400 to-yellow-400 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(249,115,22,0.8)]"
